@@ -1,11 +1,15 @@
 import React, { useState } from "react";
 import { dummyTrailers } from "../assets/assets";
-import ReactPlayer from "react-player";
 import BlurCircle from "./BlurCircle";
 import { PlayCircleIcon } from "lucide-react";
 
 const TrailersSection = () => {
   const [currentTrailer, setCurrentTrailer] = useState(dummyTrailers[0]);
+
+  const getEmbedUrl = (url) => {
+    const videoId = url.split("v=")[1];
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+  };
 
   return (
     <div className="px-6 md:px-16 lg:px-24 xl:px-44 py-20 overflow-hidden">
@@ -15,13 +19,16 @@ const TrailersSection = () => {
 
       <div className="relative mt-6">
         <BlurCircle top="-100px" right="-100px" />
-        <ReactPlayer
-          url={currentTrailer.videoUrl}
-          controls={true}
-          className="mx-auto max-w-full"
-          width="960px"
-          height="540px"
-        />
+        <iframe
+          width="960"
+          height="540"
+          src={getEmbedUrl(currentTrailer.videoUrl)}
+          title="YouTube Trailer"
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          className="mx-auto max-w-full rounded-lg"
+        ></iframe>
       </div>
 
       <div className="group grid grid-cols-4 gap-4 md:gap-8 mt-8 max-w-3xl mx-auto">
