@@ -26,7 +26,7 @@ export const getDashboardData = async (req, res) => {
         res.json({ success: true, dashboardData });
 
     } catch (error) {
-        console.error(error);
+        console.log(error);
         res.json({ succcess: false, message: error.message });
     }
 }
