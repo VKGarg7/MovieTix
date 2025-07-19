@@ -23,10 +23,9 @@ export const addShow = async (req, res) => {
     try {
         const { movieId, showsInput, showPrice } = req.body;
 
-        let movie = await Movie.findById(movieId)
+        let movie = await Movie.findById(movieId);
 
         if (!movie) {
-            //Fetch movie details and credits from TMDB API
             const [movieDetailsResponse, movieCreditsResponse] = await Promise.all([
                 axios.get(`https://api.themoviedb.org/3/movie/${movieId}`, {
                     headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` }
@@ -52,31 +51,13 @@ export const addShow = async (req, res) => {
                 tagline: movieApiData.tagline || "",
                 vote_average: movieApiData.vote_average,
                 runtime: movieApiData.runtime,
-            }
+            };
 
-            // Add movie to the database
             movie = await Movie.create(movieDetails);
         }
 
-        // const showsToCreate = [];
-        // showsInput.forEach(show => {
-        //     const showDate = show.date;
-        //     show.time.forEach((time) => {
-        //         const dateTimeString = `${showDate}T${time}`;
-        //         showsToCreate.push({
-        //             movie: movieId,
-        //             showDateTime: new Date(dateTimeString),
-        //             showPrice,
-        //             occupiedSeats: {}
-        //         })
-        //     })
-        // });
-        // if(showsToCreate.length > 0){
-        //     await Show.insertMany(showsToCreate);
-        // }
-        // res.json({success: true , message: 'Show Added successfully.'})
-
         const showsToCreate = [];
+
         showsInput.forEach(show => {
             const showDate = show.date;
 
@@ -87,15 +68,22 @@ export const addShow = async (req, res) => {
             } else if (typeof show.time === 'string') {
                 timeArray = show.time.split(',').map(t => t.trim());
             } else {
-                console.warn('Invalid format for show.time:', show.time);
+                console.warn('Invalid time format:', show.time);
                 return;
             }
 
             timeArray.forEach((time) => {
-                const dateTimeString = `${showDate}T${time}`;
+                const dateTimeString = `${showDate}T${time}+05:30`;
+                const showDateTime = new Date(dateTimeString);
+
+                console.log("📅 Creating Show:", {
+                    input: dateTimeString,
+                    parsed: showDateTime.toISOString()
+                });
+
                 showsToCreate.push({
                     movie: movieId,
-                    showDateTime: new Date(dateTimeString),
+                    showDateTime,
                     showPrice,
                     occupiedSeats: {}
                 });
@@ -105,30 +93,38 @@ export const addShow = async (req, res) => {
         if (showsToCreate.length > 0) {
             await Show.insertMany(showsToCreate);
         }
+
         res.json({ success: true, message: 'Show Added successfully.' });
 
     } catch (error) {
-        console.log(error);
-        res.json({ success: false, message: error.message })
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
 
 // API to get all shows from the database
 export const getShows = async (req, res) => {
     try {
-        const shows = await Show.find({ showDateTime: { $gte: new Date() } }).populate('movie').sort({ showDateTime: 1 });
+        const shows = await Show.find({ showDateTime: { $gte: new Date() } })
+                                .populate('movie')
+                                .sort({ showDateTime: 1 });
 
-        //filter unique shows
-        const uniqueShows = new Set(shows.map(show => show.movie))
 
-        res.json({ success: true, shows: Array.from(uniqueShows) });
+        const uniqueShowsMap = new Map();
+
+        shows.forEach((show) => {
+            const movieId = show.movie._id?.toString() || show.movie?.toString();
+            if (!uniqueShowsMap.has(movieId)) {
+                uniqueShowsMap.set(movieId, show.movie);
+            }
+        });
+
+        res.json({ success: true, shows: Array.from(uniqueShowsMap.values()) });
 
     } catch (error) {
-        console.error(error);
         res.json({ success: false, message: error.message });
     }
-}
+};
 
 
 // API to get a single show from the databse
