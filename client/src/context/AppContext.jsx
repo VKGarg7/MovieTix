@@ -13,7 +13,7 @@ export const AppProvider = ({ children }) => {
   const [shows, setShows] = useState([]);
   const [favoriteMovies, setFavoriteMovies] = useState([]);
 
-  const image_base_url = import.meta.env.VITE_IMAGE_BASE_URL;
+  const image_base_url = import.meta.env.VITE_TMDB_IMAGE_BASE_URL;
 
   const { user } = useUser();
   const { getToken } = useAuth()
