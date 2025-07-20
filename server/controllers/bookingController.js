@@ -22,46 +22,90 @@ const checkSeatsAvailability = async(showId , selectedSeats) => {
 }
 
 
-export const createBooking = async(req , res)=> {
-    try {
-        const {userId} = req.auth();
-        const {showId , selectedSeats} = req.body;
-        const {origin} =  req.headers;
+// export const createBooking = async(req , res)=> {
+//     try {
+//         const {userId} = req.auth();
+//         const {showId , selectedSeats} = req.body;
+//         const {origin} =  req.headers;
 
-        //check if the seat is available for the selected show
-        const isAvailable = await checkSeatsAvailability(showId, selectedSeats);
-        if(!isAvailable) {
+//         //check if the seat is available for the selected show
+//         const isAvailable = await checkSeatsAvailability(showId, selectedSeats);
+//         if(!isAvailable) {
+//             return res.json({success: false, message: "Selected seats are not available"});
+//         }
+
+//         // get the show details
+//         const showData = await Show.findById(showId).populate('movie');
+
+//         //create a new booking
+//         const booking = await Booking.create({
+//             user: userId,
+//             show: showId,
+//             amount: showData.showPrice * selectedSeats.length,
+//             bookedSeats: selectedSeats
+//         })
+
+//         selectedSeats.mao((seat)=>{
+//             showData.occupiedSeats[seat] = userId;
+//         })
+
+//         showData.markModified('occupiedSeats');
+
+//         await showData.save();
+
+//         // stripe gateway Initialize
+
+//         res.json({success: true, message: "Booked Successfully" })
+        
+//     } catch (error) {
+//         console.error(error.message);
+//         res.json({success: false, message: error.message});
+//     }
+// }
+export const createBooking = async(req, res) => {
+    try {
+        const { userId } = req.auth();
+        const { showId, selectedSeats } = req.body;
+
+        const updateQuery = {};
+        selectedSeats.forEach(seat => {
+            updateQuery[`occupiedSeats.${seat}`] = {$exists: false};
+        });
+
+        const updateSet = {};
+        selectedSeats.forEach(seat => {
+            updateSet[`occupiedSeats.${seat}`] = userId;
+        });
+
+        const showData = await Show.findOneAndUpdate(
+            {
+                _id: showId,
+                ...updateQuery
+            },
+            {
+                $set: updateSet
+            },
+            { new: true }
+        );
+
+        if(!showData) {
             return res.json({success: false, message: "Selected seats are not available"});
         }
 
-        // get the show details
-        const showData = await Show.findById(showId).populate('movie');
-
-        //create a new booking
         const booking = await Booking.create({
             user: userId,
             show: showId,
             amount: showData.showPrice * selectedSeats.length,
             bookedSeats: selectedSeats
-        })
+        });
 
-        selectedSeats.mao((seat)=>{
-            showData.occupiedSeats[seat] = userId;
-        })
-
-        showData.markModified('occupiedSeats');
-
-        await showData.save();
-
-        // stripe gateway Initialize
-
-        res.json({success: true, message: "Booked Successfully" })
-        
+        res.json({success: true, message: "Booked Successfully"});
     } catch (error) {
         console.error(error.message);
         res.json({success: false, message: error.message});
     }
-}
+};
+
 
 
 export const getOccupiedSeats = async(req, res) => {
