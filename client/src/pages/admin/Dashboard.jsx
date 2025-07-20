@@ -69,6 +69,7 @@ const Dashboard = () => {
     }
   };
 
+
   useEffect(() => {
     if(user){
       fetchDashboardData();
