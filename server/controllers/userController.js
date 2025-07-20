@@ -41,8 +41,11 @@ export const updateFavorite = async (req, res) => {
         }
 
         await clerkClient.users.updateUserMetadata(userId, {
-            privateMetadata: user.privateMetadata.favorites
+            privateMetadata: {
+                favorites: user.privateMetadata.favorites,
+            },
         });
+
 
         res.json({ success: true, message: "Favorite movies updated" });
 
