@@ -1,11 +1,12 @@
-import React, { useEffect, useState, assets } from "react";
+import React, { useEffect, useState } from "react";
+import { assets } from "../assets/assets";
 import { useParams, useNavigate } from "react-router-dom";
 import Loading from "../components/Loading";
 import isoTimeFormat from "../lib/isoTimeFormat";
 import { ArrowRightIcon, ClockIcon } from "lucide-react";
 import BlurCircle from "../components/BlurCircle";
 import { toast } from "react-hot-toast";
-import { useAppContext } from "../context/appContext";
+import { useAppContext } from "../context/AppContext";
 
 const SeatLayout = () => {
   const groupRows = [
@@ -24,7 +25,7 @@ const SeatLayout = () => {
 
   const {axios , getToken , user} = useAppContext();
 
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
 
   const getShow = async () => {
     try {
