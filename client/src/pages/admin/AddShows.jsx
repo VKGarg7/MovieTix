@@ -166,13 +166,12 @@ const AddShows = () => {
 
       {/* date and time selection */}
       <div className="mt-6">
-        <label
-          className="block text-sm font-medium mb-2"
+        <label className="block text-sm font-medium mb-2">
           Select
           Date
           and
           Time
-        ></label>
+        </label>
         <div className="inline-flex gap-5 border border-gray-600 p-1 pl-3 rounded-lg">
           <input
             type="datetime-local"
