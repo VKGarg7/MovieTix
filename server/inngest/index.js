@@ -63,9 +63,9 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
       const bookingId = event.data.bookingId;
       const booking = await Booking.findById(bookingId)
 
-      //if payent is not made , release seats and delete booking
+      //if payment is not made , release seats and delete booking
       if (!booking.isPaid) {
-        const show = await show.findById(booking.show);
+        const show = await Show.findById(booking.show);
         booking.bookedSeats.forEach((seat) => {
           delete show.occupiedSeats[seat];
         });
@@ -119,7 +119,7 @@ const sendShowReminders = inngest.createFunction(
     //prepare reminder emails
     const reminderTasks = await step.run('prepare-reminder-tasks', async () => {
       const shows = await Show.find({
-        showTime: {$gte: windowStart, $lte: in8Hours},
+        showDateTime: {$gte: windowStart, $lte: in8Hours},
       }).populate('movie');
       
       const tasks = [];
@@ -139,7 +139,7 @@ const sendShowReminders = inngest.createFunction(
             userEmail: user.email,
             userName: user.name,
             movieTitle: show.movie.title,
-            showTime: show.showTime,
+            showTime: show.showDateTime,
           })
         } 
       }
@@ -159,7 +159,7 @@ const sendShowReminders = inngest.createFunction(
           body: ` <div style='font-family: Arial, sans-serif; padding: 20px;'>
                 <h2>Hi ${task.userName},</h2>
                 <p>This is a quick reminder that your movie:</p>
-                <h3 styele='color: #F84565;'>"${task.movieTitle}"</h3> 
+                <h3 style='color: #F84565;'>"${task.movieTitle}"</h3>
                 <p>
                   is scheduled for 
                   <strong>${new Date(task.showTime).toLocaleDateString('en-US' , {timeZone: 'Asia/Kolkata'})}</strong>

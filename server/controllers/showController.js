@@ -11,7 +11,7 @@ export const getNowPlayingMovies = async (req, res) => {
             headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` }
         })
         const movies = data.results;
-        res.json({ succes: true, movies: movies })
+        res.json({ success: true, movies: movies })
     } catch (error) {
         console.log(error);
         res.json({ success: false, message: error.message })
@@ -23,6 +23,13 @@ export const getNowPlayingMovies = async (req, res) => {
 export const addShow = async (req, res) => {
     try {
         const { movieId, showsInput, showPrice } = req.body;
+
+        if (!movieId || !Array.isArray(showsInput) || showsInput.length === 0) {
+            return res.status(400).json({ success: false, message: 'movieId and showsInput are required' });
+        }
+        if (typeof showPrice !== 'number' || !Number.isFinite(showPrice) || showPrice <= 0) {
+            return res.status(400).json({ success: false, message: 'showPrice must be a positive number' });
+        }
 
         let movie = await Movie.findById(movieId);
 

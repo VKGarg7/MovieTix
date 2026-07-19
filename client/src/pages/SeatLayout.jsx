@@ -85,7 +85,7 @@ const SeatLayout = () => {
       if(data.success){
         setOccupiedSeats(data.occupiedSeats)
       }else{
-        toast.data(data.message)
+        toast.error(data.message)
       }
       
     } catch (error) {
@@ -107,9 +107,9 @@ const SeatLayout = () => {
       }else{
         toast.error(data.message);
       }
-      
+
     } catch (error) {
-        toast.error(error.message);
+        toast.error(error.response?.data?.message || error.message);
     }
   }
 
