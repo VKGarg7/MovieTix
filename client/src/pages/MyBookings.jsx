@@ -14,25 +14,25 @@ const MyBookings = () => {
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const getMyBookings = async () => {
-    try {
-      const { data } = await axios.get("/api/user/bookings", {
-        headers: { Authorization: `Bearer ${await getToken()}` },
-      });
-      if (data.success) {
-        setBookings(data.bookings);
-      }
-    } catch (error) {
-      console.log(error);
-    }
-    setIsLoading(false);
-  };
-
   useEffect(() => {
-    if (user) {
-      getMyBookings();
-    }
-  }, [user]);
+    if (!user) return;
+
+    const getMyBookings = async () => {
+      try {
+        const { data } = await axios.get("/api/user/bookings", {
+          headers: { Authorization: `Bearer ${await getToken()}` },
+        });
+        if (data.success) {
+          setBookings(data.bookings);
+        }
+      } catch (error) {
+        console.log(error);
+      }
+      setIsLoading(false);
+    };
+
+    getMyBookings();
+  }, [user, axios, getToken]);
 
   return !isLoading ? (
     <div className="relative px-6 md:px-16 lg:px-40 pt-30 md:pt-40 min-h-[80vh]">
@@ -75,13 +75,13 @@ const MyBookings = () => {
                 {currency}
                 {item.amount}
               </p>
-              {!item.isPaid && 
-                <Link
-                  to={item.paymentLink}
+              {!item.isPaid &&
+                <a
+                  href={item.paymentLink}
                   className="bg-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer"
                 >
                   Pay Now
-                </Link>
+                </a>
               }
             </div>
 

@@ -24,14 +24,14 @@ export const AppProvider = ({ children }) => {
     try {
       const { data } = await axios.get("/api/admin/is-admin", {
         headers: { Authorization: `Bearer ${await getToken()}` }})
-      setIsAdmin(data.isAdmin);
-
-      if (!data.isAdmin && location.pathname.startsWith("/admin")) {
+      setIsAdmin(data.isAdmin === true);
+    } catch (error) {
+      // the server answers 403 for non-admins
+      setIsAdmin(false);
+      if (location.pathname.startsWith("/admin")) {
         navigate("/")
         toast.error("You are not authorized to access this page.")
       }
-    } catch (error) {
-      console.error(error);
     }
   }
 
