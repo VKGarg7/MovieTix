@@ -87,38 +87,38 @@ const Dashboard = () => {
           {dashboardCards.map((card, index) => (
             <div
               key={index}
-              className="flex items-center justify-between px-4 py-3 bg-primary/10 border border-primary/20 rounded-md max-w-50 w-full">
+              className="card-surface flex items-center justify-between px-5 py-4 rounded-xl max-w-50 w-full hover:border-white/20 transition-colors duration-300">
 
               <div>
-                <h1 className="text-sm">{card.title}</h1>
-                <p className="text-xl font-medium mt-1">{card.value}</p>
+                <h1 className="text-xs text-gray-400 tracking-wide">{card.title}</h1>
+                <p className="text-2xl font-semibold mt-1.5 tracking-tight">{card.value}</p>
               </div>
-              
-              <card.icon className="w-6 h-6" />
+
+              <card.icon className="w-6 h-6 text-primary" />
             </div>
           ))}
         </div>
 
       </div>
-      
-      <p className="mt-10 text-lg font-medium">Active Shows</p>
+
+      <p className="mt-12 text-xl font-semibold tracking-tight">Active Shows</p>
 
       <div className="relative flex flex-wrap gap-6 mt-4 max-w-5xl">
         <BlurCircle top="-100px" left="-10%" />
         {dashboardData.activeShows.map((show)=>(
-          <div key={show._id} className="w-55 rounded-lg overflow-hidden h-full pb-3 bg-primary/10 border border-primary/20 hover:-translate-y-1 transition duration-300">
+          <div key={show._id} className="card-surface w-55 rounded-xl overflow-hidden h-full pb-3 hover:-translate-y-1.5 hover:border-white/20 hover:shadow-[var(--shadow-elevated)] transition-all duration-300">
             <img src={image_base_url + show.movie.poster_path} alt="" className="h-60 w-full object-cover"/>
-            <p className="font-medium p-2 truncate">{show.movie.title}</p>
+            <p className="font-medium p-2.5 truncate">{show.movie.title}</p>
 
-            <div className="flex items-center justify-between px-2">
-              <p className="text-lg font-medium">{currency}{show.showPrice}</p>
+            <div className="flex items-center justify-between px-2.5">
+              <p className="text-lg font-semibold">{currency}{show.showPrice}</p>
               <p className="flex items-center gap-1 text-sm text-gray-400 mt-1 pr-1">
                 <StarIcon className="w-4 h-4 text-primary fill-primary"/>
                 {show.movie.vote_average.toFixed(1)}
               </p>
             </div>
 
-            <p className="px-2 pt-2 text-sm text-gray-500">{dateFormat(show.showDateTime)}</p>
+            <p className="px-2.5 pt-2 text-sm text-gray-500">{dateFormat(show.showDateTime)}</p>
 
           </div>
         ))}

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Movie from '../models/Movie.js';
 import Show from '../models/Show.js';
+import Screen from '../models/Screen.js';
 import { inngest } from '../inngest/index.js';
 
 
@@ -22,13 +23,21 @@ export const getNowPlayingMovies = async (req, res) => {
 // API to add a new show to the database
 export const addShow = async (req, res) => {
     try {
-        const { movieId, showsInput, showPrice } = req.body;
+        const { movieId, screenId, showsInput, showPrice } = req.body;
 
         if (!movieId || !Array.isArray(showsInput) || showsInput.length === 0) {
             return res.status(400).json({ success: false, message: 'movieId and showsInput are required' });
         }
+        if (!screenId) {
+            return res.status(400).json({ success: false, message: 'screenId is required' });
+        }
         if (typeof showPrice !== 'number' || !Number.isFinite(showPrice) || showPrice <= 0) {
             return res.status(400).json({ success: false, message: 'showPrice must be a positive number' });
+        }
+
+        const screen = await Screen.findById(screenId);
+        if (!screen) {
+            return res.status(404).json({ success: false, message: 'Screen not found' });
         }
 
         let movie = await Movie.findById(movieId);
@@ -91,6 +100,7 @@ export const addShow = async (req, res) => {
 
                 showsToCreate.push({
                     movie: movieId,
+                    screen: screenId,
                     showDateTime,
                     showPrice,
                     occupiedSeats: {}
@@ -148,16 +158,29 @@ export const getShow = async (req, res) => {
 
         //get all upcoming shows for the movie
         const shows = await Show.find({ movie: movieId, showDateTime: { $gte: new Date() } })
+            .populate({ path: 'screen', populate: { path: 'theater' } })
+            .sort({ showDateTime: 1 });
 
         const movie = await Movie.findById(movieId);
         const dateTime = {};
 
         shows.forEach((show) => {
+            if (!show.screen || !show.screen.theater) return; // skip shows on a deleted screen/theater
+
             const date = show.showDateTime.toISOString().split("T")[0];
             if (!dateTime[date]) {
                 dateTime[date] = []
             }
-            dateTime[date].push({ time: show.showDateTime, showId: show._id })
+            dateTime[date].push({
+                time: show.showDateTime,
+                showId: show._id,
+                screenId: show.screen._id,
+                screenName: show.screen.name,
+                screenType: show.screen.screenType,
+                theaterId: show.screen.theater._id,
+                theaterName: show.screen.theater.name,
+                theaterCity: show.screen.theater.city,
+            })
         })
         res.json({ success: true, movie, dateTime })
 

@@ -5,7 +5,19 @@ import { inngest } from '../inngest/index.js';
 
 
 const MAX_SEATS_PER_BOOKING = 5;
-const SEAT_PATTERN = /^[A-J][1-9]$/;
+
+// builds a { rowLetter: maxSeatNumber } map from a screen's row config,
+// so we can validate a seat like "C7" actually exists on that screen
+const buildSeatValidator = (screen) => {
+    const rowLimits = new Map(screen.rows.map(r => [r.row, r.seats]));
+    return (seat) => {
+        const match = /^([A-Z])([1-9][0-9]?)$/.exec(seat);
+        if (!match) return false;
+        const [, row, num] = match;
+        const maxSeats = rowLimits.get(row);
+        return maxSeats !== undefined && Number(num) <= maxSeats;
+    };
+};
 
 export const createBooking = async(req , res)=> {
     try {
@@ -20,7 +32,17 @@ export const createBooking = async(req , res)=> {
         if (selectedSeats.length > MAX_SEATS_PER_BOOKING) {
             return res.status(400).json({success: false, message: `You can book at most ${MAX_SEATS_PER_BOOKING} seats`});
         }
-        if (!selectedSeats.every(seat => typeof seat === 'string' && SEAT_PATTERN.test(seat))) {
+
+        const showForValidation = await Show.findById(showId).populate('screen');
+        if (!showForValidation) {
+            return res.status(404).json({success: false, message: "Show not found"});
+        }
+        if (!showForValidation.screen) {
+            return res.status(500).json({success: false, message: "Show is missing a screen configuration"});
+        }
+
+        const isValidSeat = buildSeatValidator(showForValidation.screen);
+        if (!selectedSeats.every(seat => typeof seat === 'string' && isValidSeat(seat))) {
             return res.status(400).json({success: false, message: "Invalid seat selection"});
         }
 

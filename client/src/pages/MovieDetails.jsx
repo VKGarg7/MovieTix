@@ -54,15 +54,15 @@ const MovieDetails = () => {
         <img
           src={image_base_url + show.movie.poster_path}
           alt=""
-          className="max-md:mx-auto rounded-xl h-104 max-w-70 object-cover"
+          className="max-md:mx-auto rounded-2xl h-104 max-w-70 object-cover shadow-[var(--shadow-elevated)] border border-white/10"
         />
 
         <div className="relative flex flex-col gap-3">
           <BlurCircle top="-100px" left="-100px" />
 
-          <p className="text-primary">ENGLISH</p>
+          <p className="text-primary text-sm font-medium tracking-widest uppercase">English</p>
 
-          <h1 className="text-4xl font-semibold max-w-96 text-balance">
+          <h1 className="text-4xl md:text-5xl font-semibold max-w-96 text-balance tracking-tight">
             {show.movie.title}
           </h1>
 
@@ -71,35 +71,35 @@ const MovieDetails = () => {
             {show.movie.vote_average.toFixed(1)} User Rating
           </div>
 
-          <p className="text-gray-400 mt-2 text-sm leading-tight max-w-xl">
+          <p className="text-gray-400 mt-2 text-sm leading-relaxed max-w-xl">
             {show.movie.overview}
           </p>
 
-          <p>
+          <p className="text-gray-300 text-sm">
             {timeFormat(show.movie.runtime)} |{" "}
             {show.movie.genres.map((genre) => genre.name).join(" ,")} |{" "}
             {show.movie.release_date.split("-")[0]}
           </p>
 
           <div className="flex items-center flex-wrap gap-4 mt-4">
-            <button className="flex items-center gap-2 px-7 py-3 text-sm bg-gray-800 hover::bg-gray-900 transition rounded-md font-medium cursor-pointer active:scale-95">
+            <button className="flex items-center gap-2 px-7 py-3 text-sm bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all duration-300 rounded-full font-medium cursor-pointer active:scale-95">
               <PlayCircleIcon className="w-5 h-5" />
               Watch Trailer
             </button>
             <a
               href="#dateSelect"
-              className="px-10 py-3 text-sm bg-primary hover:bg-primary-dull transition rounded-md font-medium cursor-pointer active:scale-95">
+              className="btn-primary px-10 py-3 text-sm rounded-full font-medium cursor-pointer active:scale-95 text-white">
               Buy Tickets
             </a>
-            
-            <button onClick={handleFavorite} className="bg-gray-700 p-2.5 rounded-full transition cursor-pointer active:scale-95">
-              <Heart className={`w-5 h-5 ${favoriteMovies.find(movie => movie._id === id) ? 'fill-primary text-primary' : ""}`} />
+
+            <button onClick={handleFavorite} className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 p-3 rounded-full transition-all duration-300 cursor-pointer active:scale-95">
+              <Heart className={`w-5 h-5 ${favoriteMovies.find(movie => movie._id === id) ? 'fill-primary text-primary' : "text-gray-300"}`} />
             </button>
           </div>
         </div>
       </div>
 
-      <p className="text-lg font-medium mt-20">Your Favourite Cast</p>
+      <p className="text-lg font-semibold tracking-tight mt-20">Your Favourite Cast</p>
 
       <div className="overflow-x-auto no-scrollbar mt-8 pb-4">
         <div className="flex items-center gap-4 w-max px-4">
@@ -108,9 +108,9 @@ const MovieDetails = () => {
               <img
                 src={image_base_url + cast.profile_path}
                 alt=""
-                className="rounded-full h-20 md:h-20 aspect-square object-cover"
+                className="rounded-full h-20 md:h-20 aspect-square object-cover border border-white/10"
               />
-              <p className="font-medium text-xs mt-3">{cast.name}</p>
+              <p className="font-medium text-xs mt-3 text-gray-300">{cast.name}</p>
             </div>
           ))}
         </div>
@@ -118,7 +118,7 @@ const MovieDetails = () => {
 
       <DateSelect dateTime={show.dateTime} id={id} />
 
-      <p className="text-lg font-medium mt-20 mb-8">You May Also like</p>
+      <p className="text-lg font-semibold tracking-tight mt-20 mb-8">You May Also like</p>
       <div className="flex flex-wrap max-sm:justify-center gap-8">
         {shows.slice(0, 4).map((movie, index) => (
           <MovieCard key={index} movie={movie} />
@@ -128,7 +128,7 @@ const MovieDetails = () => {
       <div className="flex justify-center mt-20">
         <button
           onClick={() => {navigate("/movies") ; scrollTo(0, 0)}}
-          className="px-10 py-3 text-sm bg-primary hover:bg-primary-dull transition rounded-md font-medium cursor-pointer"
+          className="px-10 py-3.5 text-sm border border-white/15 hover:border-white/30 hover:bg-white/5 transition-all duration-300 rounded-full font-medium cursor-pointer"
         >
           Show More
         </button>
