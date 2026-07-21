@@ -1,7 +1,7 @@
 import React from "react";
 import { useEffect } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useAppContext } from "../context/AppContext";
+import { useAppContext } from "../context/useAppContext";
 
 const MAX_POLL_ATTEMPTS = 15; // ~30 seconds
 
@@ -34,7 +34,7 @@ const Loading = () => {
           clearInterval(interval);
           navigate('/' + nextUrl);
         }
-      } catch (error) {
+      } catch {
         if (attempts >= MAX_POLL_ATTEMPTS) {
           clearInterval(interval);
           navigate('/' + nextUrl);
@@ -43,6 +43,8 @@ const Loading = () => {
     }, 2000);
 
     return () => clearInterval(interval);
+    // run once on mount only — re-running would restart the poll/redirect timers
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (

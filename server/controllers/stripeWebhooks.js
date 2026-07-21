@@ -5,12 +5,14 @@ import {inngest} from '../inngest/index.js';
 export const stripeWebhooks = async (request , response) => {
     const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
     const sig = request.headers['stripe-signature'];
+    const log = request.log;
 
     let event;
 
     try {
         event = stripeInstance.webhooks.constructEvent(request.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
     } catch (error) {
+        log.warn({ err: error }, 'Stripe webhook signature verification failed');
         return response.status(400).send(`Webhook Error: ${error}`);
     }
 
@@ -28,18 +30,19 @@ export const stripeWebhooks = async (request , response) => {
                 //send confirmation email to user
                 await inngest.send({
                     name: 'app/show.booked',
-                    data: {bookingId}      
+                    data: {bookingId}
                 })
 
+                log.info({ bookingId }, 'Booking marked as paid');
                 break;
             }
-         
+
             default:
-                console.log('Unhandled event type:' , event.type);
+                log.debug({ eventType: event.type }, 'Unhandled Stripe event type');
         }
         response.json({received: true});
     } catch (error) {
-        console.error('Error processing webhook:', error);
+        log.error({ err: error }, 'Error processing Stripe webhook');
         response.status(500).send('Internal Server Error');
     }
 }

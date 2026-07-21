@@ -3,7 +3,7 @@ import Loading from "../components/Loading";
 import BlurCircle from "../components/BlurCircle";
 import timeFormat from "../lib/timeFormat";
 import { dateFormat } from "../lib/dateFomat";
-import { useAppContext } from "../context/AppContext";
+import { useAppContext } from "../context/useAppContext";
 import { Link } from "react-router-dom";
 
 const MyBookings = () => {
@@ -51,21 +51,29 @@ const MyBookings = () => {
         >
           {/* Displaying booking details */}
           <div className="flex flex-col md:flex-row">
-            <img
-              src={image_base_url + item.show.movie.poster_path}
-              alt=""
-              className="md:max-w-45 aspect-video h-auto object-cover object-bottom rounded"
-            />
+            {item.show?.movie ? (
+              <>
+                <img
+                  src={image_base_url + item.show.movie.poster_path}
+                  alt=""
+                  className="md:max-w-45 aspect-video h-auto object-cover object-bottom rounded"
+                />
 
-            <div className="flex flex-col p-4">
-              <p className="text-lg font-semibold">{item.show.movie.title}</p>
-              <p className="text-gray-400 text-sm">
-                {timeFormat(item.show.movie.runtime)}
-              </p>
-              <p className="text-gray-400 text-sm mt-auto">
-                {dateFormat(item.show.showDateTime)}
-              </p>
-            </div>
+                <div className="flex flex-col p-4">
+                  <p className="text-lg font-semibold">{item.show.movie.title}</p>
+                  <p className="text-gray-400 text-sm">
+                    {timeFormat(item.show.movie.runtime)}
+                  </p>
+                  <p className="text-gray-400 text-sm mt-auto">
+                    {dateFormat(item.show.showDateTime)}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col p-4">
+                <p className="text-lg font-semibold text-gray-400">Show no longer available</p>
+              </div>
+            )}
           </div>
 
           {/* Displaying booking summary */}

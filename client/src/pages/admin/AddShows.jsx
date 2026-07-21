@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { dummyShowsData } from "../../assets/assets";
 import Loading from "../../components/Loading";
 import Title from "../../components/admin/Title";
 import {CheckIcon, DeleteIcon, StarIcon } from "lucide-react";
 import { kConverter } from "../../lib/kConverter";
-import { useAppContext } from "../../context/AppContext";
+import { useAppContext } from "../../context/useAppContext";
 import toast from "react-hot-toast";
 
 const AddShows = () => {
@@ -99,6 +98,8 @@ const AddShows = () => {
       if(user){
         fetchNowPlayingMovies();
       }
+    // only re-run when the user changes, not on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   

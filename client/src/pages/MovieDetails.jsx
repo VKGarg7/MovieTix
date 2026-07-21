@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { dummyDateTimeData, dummyShowsData } from "../assets/assets";
 import timeFormat from "../lib/timeFormat";
 import { StarIcon, Heart, PlayCircleIcon } from "lucide-react";
 import BlurCircle from "../components/BlurCircle";
 import DateSelect from "../components/DateSelect";
 import MovieCard from "../components/MovieCard";
 import Loading from "../components/Loading";
-import { useAppContext } from "../context/AppContext";
+import { useAppContext } from "../context/useAppContext";
 import toast from "react-hot-toast";
 
 const MovieDetails = () => {
@@ -46,6 +45,8 @@ const MovieDetails = () => {
 
   useEffect(() => {
     getShow();
+    // only re-run when the movie id changes, not on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   return show ? (

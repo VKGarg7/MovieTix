@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { assets } from "../assets/assets";
 import { MenuIcon, SearchIcon, TicketPlus , XIcon } from "lucide-react";
 import { useClerk, UserButton, useUser } from "@clerk/clerk-react";
-import { useAppContext } from "../context/AppContext";
+import { useAppContext } from "../context/useAppContext";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);

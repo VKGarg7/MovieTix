@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { dummyBookingData } from '../../assets/assets';
 import Loading from '../../components/Loading';
 import Title from '../../components/admin/Title';
 import { dateFormat } from "../../lib/dateFomat";
-import { useAppContext } from '../../context/AppContext';
+import { useAppContext } from '../../context/useAppContext';
 
 const ListBookings = () => {
 
@@ -28,6 +27,8 @@ const ListBookings = () => {
     if(user){
       getAllBookings();
     }
+    // only re-run when the user changes, not on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user]);
 
   return !isLoading ? (
