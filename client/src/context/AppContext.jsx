@@ -1,12 +1,11 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { AppContext } from "./appContextObject";
 
 axios.defaults.baseURL = import.meta.env.VITE_BASE_URL
-
-export const AppContext = createContext()
 
 export const AppProvider = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -25,7 +24,7 @@ export const AppProvider = ({ children }) => {
       const { data } = await axios.get("/api/admin/is-admin", {
         headers: { Authorization: `Bearer ${await getToken()}` }})
       setIsAdmin(data.isAdmin === true);
-    } catch (error) {
+    } catch {
       // the server answers 403 for non-admins
       setIsAdmin(false);
       if (location.pathname.startsWith("/admin")) {
@@ -52,7 +51,7 @@ export const AppProvider = ({ children }) => {
     try {
       const { data } = await axios.get("/api/user/favorites", {
         headers: { Authorization: `Bearer ${await getToken()}` }});
-      
+
         if (data.success) {
         setFavoriteMovies(data.movies)
       } else {
@@ -72,6 +71,8 @@ export const AppProvider = ({ children }) => {
       fetchIsAdmin();
       fetchFavoriteMovies();
     }
+    // only re-run when the user changes, not on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const value = {
@@ -89,5 +90,3 @@ export const AppProvider = ({ children }) => {
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
-
-export const useAppContext = () => useContext(AppContext);

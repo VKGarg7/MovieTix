@@ -6,7 +6,11 @@
   "main": "server.js",
   "scripts": {
     "server": "nodemon server.js",
-    "start": "node server.js"
+    "server:localdns": "nodemon -r ./dev-dns-fix.cjs server.js",
+    "start": "node server.js",
+    "lint": "eslint .",
+    "docs:generate": "node scripts/generateSwaggerSpec.js",
+    "seed:movies": "node scripts/seedDummyMovies.js"
   },
   "keywords": [],
   "author": "",
@@ -18,13 +22,22 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.6.0",
     "inngest": "^3.54.2",
     "mongoose": "^8.16.2",
     "nodemailer": "^9.0.3",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
     "stripe": "^18.3.0",
-    "svix": "^1.69.0"
+    "svix": "^1.69.0",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "nodemon": "^3.1.10",
+    "pino-pretty": "^13.1.3"
   }
 }

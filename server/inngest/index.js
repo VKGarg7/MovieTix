@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
 import sendEmail from "../configs/nodeMailer.js";
+import { logger } from "../configs/logger.js";
 
 // Create a client to send and receive events
 export const inngest = new Inngest({ id: "movie-ticket-booking" });
@@ -72,6 +73,7 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
         show.markModified('occupiedSeats');
         await show.save();
         await Booking.findByIdAndDelete(booking._id)
+        logger.info({ bookingId }, 'Unpaid booking expired, seats released');
       }
     })
   }
@@ -81,7 +83,7 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
 const sendBookingConfirmationEmail = inngest.createFunction(
   { id: 'send-booking-confirmation-email' },
   { event: 'app/show.booked' },
-  async ({ event, step }) => {
+  async ({ event }) => {
     const { bookingId } = event.data;
 
     const booking = await Booking.findById(bookingId).populate({
@@ -94,7 +96,7 @@ const sendBookingConfirmationEmail = inngest.createFunction(
       subject: `Payment Confirmation: "${booking.show.movie.title}" booked!`,
       body: ` <div style='font-family: Arial, sans-serif; line-height: 1.5;'>
                 <h2>Hi ${booking.user.name},</h2>
-                <p>Your booking for <strong style='color:#F84565;'> "${booking.show.movie.title}"</strong> is confirmed.</p> 
+                <p>Your booking for <strong style='color:#F84565;'> "${booking.show.movie.title}"</strong> is confirmed.</p>
                 <p>
                   <strong>Date:</strong> ${new Date(booking.show.showDateTime).toLocaleDateString('en-US' , {timeZone: 'Asia/Kolkata'})}<br>
                   <strong>Time:</strong> ${new Date(booking.show.showDateTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata'})}
@@ -114,14 +116,14 @@ const sendShowReminders = inngest.createFunction(
   async ({ step }) => {
     const now = new Date();
     const in8Hours = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-    const windowStart = new Date(in8Hours.getTime() - 10 * 60 * 1000); 
+    const windowStart = new Date(in8Hours.getTime() - 10 * 60 * 1000);
 
     //prepare reminder emails
     const reminderTasks = await step.run('prepare-reminder-tasks', async () => {
       const shows = await Show.find({
         showDateTime: {$gte: windowStart, $lte: in8Hours},
       }).populate('movie');
-      
+
       const tasks = [];
 
       for(const show of shows){
@@ -141,7 +143,7 @@ const sendShowReminders = inngest.createFunction(
             movieTitle: show.movie.title,
             showTime: show.showDateTime,
           })
-        } 
+        }
       }
       return tasks;
     })
@@ -161,10 +163,10 @@ const sendShowReminders = inngest.createFunction(
                 <p>This is a quick reminder that your movie:</p>
                 <h3 style='color: #F84565;'>"${task.movieTitle}"</h3>
                 <p>
-                  is scheduled for 
+                  is scheduled for
                   <strong>${new Date(task.showTime).toLocaleDateString('en-US' , {timeZone: 'Asia/Kolkata'})}</strong>
                   at
-                  <strong>${new Date(task.showTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata'})}</strong> 
+                  <strong>${new Date(task.showTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata'})}</strong>
                 </p>
                 <p>It starts in approximately <strong>8 hours</strong> make sure you're ready!</p>
                 <br/>
@@ -177,13 +179,19 @@ const sendShowReminders = inngest.createFunction(
     const sent = results.filter(r => r.status === 'fulfilled').length;
     const failed = results.length - sent;
 
+    if (failed > 0) {
+      logger.warn({ sent, failed }, 'Some show reminder emails failed to send');
+    } else {
+      logger.info({ sent }, 'Show reminder emails sent');
+    }
+
     return {
       sent,
       failed,
       message: `Sent ${sent} reminders, ${failed} failed`
     }
   }
-) 
+)
 
 
 //inngest functions to send notificatiosn when a new show is added
@@ -202,7 +210,7 @@ const sendNewShowNotification = inngest.createFunction(
 
       const body = ` <div style='font-family: Arial, sans-serif; padding: 20px;'>
                       <h2>Hi ${userName},</h2>
-                      <p>We are excited to inform you that a new show for the movie 
+                      <p>We are excited to inform you that a new show for the movie
                       <strong style='color:#F84565;'> "${movieTitle}"</strong> has been added!</p>
                       <p>Check it out now and book your tickets!</p>
                       <br/>

@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { assets } from "../assets/assets";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import Loading from "../components/Loading";
 import isoTimeFormat from "../lib/isoTimeFormat";
 import { ArrowRightIcon, ClockIcon } from "lucide-react";
 import BlurCircle from "../components/BlurCircle";
 import { toast } from "react-hot-toast";
-import { useAppContext } from "../context/AppContext";
+import { useAppContext } from "../context/useAppContext";
 
 const SeatLayout = () => {
   const groupRows = [
@@ -115,12 +115,16 @@ const SeatLayout = () => {
 
   useEffect(() => {
     getShow();
+    // run once on mount only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if(selectedTime){
       getOccupiedSeats();
     }
+    // only re-run when the selected time changes, not on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTime])
 
   return show ? (

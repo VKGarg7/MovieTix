@@ -1,19 +1,15 @@
 import { clerkClient } from '@clerk/express';
+import AppError from '../utils/AppError.js';
 
 // requires a signed-in user
 export const protectUser = (req, res, next) => {
-    try {
-        const { userId } = req.auth();
+    const { userId } = req.auth();
 
-        if (!userId) {
-            return res.status(401).json({success: false, message: "not authenticated"});
-        }
-
-        next();
-
-    } catch (error) {
-        return res.status(401).json({success: false, message: "not authenticated"});
+    if (!userId) {
+        return next(new AppError('Not authenticated', 401, 'UNAUTHENTICATED'));
     }
+
+    next();
 }
 
 export const protectAdmin = async (req, res, next) => {
@@ -23,12 +19,13 @@ export const protectAdmin = async (req, res, next) => {
         const user = await clerkClient.users.getUser(userId);
 
         if(user.privateMetadata.role !== 'admin'){
-            return res.status(403).json({success: false , message: "not authorized"});
+            return next(new AppError('Not authorized', 403, 'NOT_AUTHORIZED'));
         }
 
         next();
 
     } catch (error) {
-        return res.status(403).json({success: false, message: "not authorized"});
+        req.log?.warn({ err: error }, 'Failed to verify admin role');
+        next(new AppError('Not authorized', 403, 'NOT_AUTHORIZED'));
     }
 }

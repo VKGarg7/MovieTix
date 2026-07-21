@@ -14,7 +14,7 @@ import Dashboard from './pages/admin/Dashboard'
 import AddShows from './pages/admin/AddShows'
 import ListShows from './pages/admin/ListShows'
 import ListBookings from './pages/admin/ListBookings'
-import { useAppContext } from './context/AppContext'
+import { useAppContext } from './context/useAppContext'
 import { SignIn } from '@clerk/clerk-react'
 import Loading from './components/Loading'
 

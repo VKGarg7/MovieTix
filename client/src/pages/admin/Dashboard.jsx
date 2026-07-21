@@ -5,13 +5,12 @@ import {
   StarIcon,
 } from "lucide-react";
 import React, { useState, useEffect } from "react";
-import { dummyDashboardData } from "../../assets/assets";
 import Loading from "../../components/Loading";
 import Title from "../../components/admin/Title";
 import BlurCircle from "../../components/BlurCircle";
 import { UsersIcon } from "lucide-react";
 import { dateFormat } from "../../lib/dateFomat";
-import { useAppContext } from "../../context/AppContext";
+import { useAppContext } from "../../context/useAppContext";
 import toast from "react-hot-toast";
 
 const Dashboard = () => {
@@ -74,6 +73,8 @@ const Dashboard = () => {
     if(user){
       fetchDashboardData();
     }
+    // only re-run when the user changes, not on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   return !loading ? (
