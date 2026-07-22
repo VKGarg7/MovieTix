@@ -68,27 +68,36 @@ npm run dev
 
 ## 🔐 Environment Variables
 
-Create `.env` files in both `client` and `server` with the following variables:
+Copy `server/.env.example` to `server/.env` and `client/.env.example` to `client/.env`, then fill in the values below. Both example files list every variable the code actually reads, with a one-line comment explaining each.
 
 ### Backend (`server/.env`)
 
 ```env
 MONGODB_URI=your_mongodb_connection_string
 PORT=3000
+CORS_ORIGIN=http://localhost:5173
 
 CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
 CLERK_SECRET_KEY=your_clerk_secret_key
 
-STRIPE_SECRET_KEY=your_stripe_secret_key
-STRIPE_WEBHOOK_SECRET=your_stripe_webhook_signing_secret
+INNGEST_EVENT_KEY=your_inngest_event_key
+INNGEST_SIGNING_KEY=your_inngest_signing_key
 
 TMDB_API_KEY=your_tmdb_v4_read_access_token
+
+STRIPE_SECRET_KEY=your_stripe_secret_key
+STRIPE_WEBHOOK_SECRET=your_stripe_webhook_signing_secret
 
 GMAIL_USER=your_gmail_address
 GMAIL_PASS=your_gmail_app_password
 
-INNGEST_EVENT_KEY=your_inngest_event_key
-INNGEST_SIGNING_KEY=your_inngest_signing_key
+# Optional — see server/.env.example for defaults
+LOG_LEVEL=info
+RATE_LIMIT_PUBLIC_WINDOW_MIN=1
+RATE_LIMIT_PUBLIC_MAX=60
+RATE_LIMIT_SEATS_WINDOW_MIN=1
+RATE_LIMIT_SEATS_MAX=30
+RATE_LIMIT_ALLOWLIST=
 ```
 
 ### Frontend (`client/.env`)
