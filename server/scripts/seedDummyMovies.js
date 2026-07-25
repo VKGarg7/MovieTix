@@ -6,6 +6,8 @@ import 'dotenv/config';
 import mongoose from 'mongoose';
 import Movie from '../models/Movie.js';
 import Show from '../models/Show.js';
+import Theater from '../models/Theater.js';
+import Screen from '../models/Screen.js';
 
 const SEED_MOVIES = [
     {
@@ -131,7 +133,7 @@ const SEED_MOVIES = [
         _id: '569094', // Spider-Man: Across the Spider-Verse (2023)
         title: 'Spider-Man: Across the Spider-Verse',
         overview: 'After reuniting with Gwen Stacy, Brooklyn\'s full-time, friendly neighborhood Spider-Man is catapulted across the Multiverse, where he encounters the Spider Society.',
-        poster_path: '/8Vt6mWEReuy4Of61Lnj5Xj16zTHR.jpg',
+        poster_path: '/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg',
         backdrop_path: '/4HodYYKEIsGOdinkGi2Ucz6X9i0.jpg',
         release_date: '2023-05-31',
         original_language: 'en',
@@ -148,7 +150,7 @@ const SEED_MOVIES = [
         _id: '609681', // The Marvels (2023)
         title: 'The Marvels',
         overview: 'Carol Danvers gets her powers entangled with those of Kamala Khan and Monica Rambeau, forcing them to work together to save the universe.',
-        poster_path: '/9GBhzXMFjgcZ3FdR9w3bUEHIINA.jpg',
+        poster_path: '/9GBhzXMFjgcZ3FdR9w3bUMMTps5.jpg',
         backdrop_path: '/AtsgWhDnHTq68L0lLsUrCnM7TjG.jpg',
         release_date: '2023-11-08',
         original_language: 'en',
@@ -169,9 +171,46 @@ const SHOW_PRICE = 250;
 // for months, without needing to re-run this script regularly.
 const DAYS_AHEAD = 90;
 
+// Default screen for these seeded shows. Mixed seat types (regular + premium)
+// so the seat layout demonstrably isn't just a relabeled fixed grid.
+async function ensureDefaultScreen() {
+    const theater = await Theater.findOneAndUpdate(
+        { name: 'MovieTix Multiplex', city: 'Demo City' },
+        {
+            name: 'MovieTix Multiplex',
+            slug: 'movietix-multiplex-demo-city',
+            city: 'Demo City',
+            address: '1 Demo Street, Demo City',
+            geolocation: { lat: 0, lng: 0 },
+            contactEmail: 'demo-theater@example.com',
+            isActive: true,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    const rows = [
+        ...'ABCDEFG'.split('').map((label) => ({ label, seatCount: 9, seatType: 'regular' })),
+        ...'HI'.split('').map((label) => ({ label, seatCount: 9, seatType: 'premium' })),
+        { label: 'J', seatCount: 9, seatType: 'recliner' },
+    ];
+
+    // findOneAndUpdate skips pre('validate') hooks (totalCapacity wouldn't be
+    // derived), so upsert via find-then-save instead.
+    let screen = await Screen.findOne({ theater: theater._id, name: 'Screen 1' });
+    if (!screen) {
+        screen = new Screen({ theater: theater._id, name: 'Screen 1' });
+    }
+    screen.rows = rows;
+    await screen.save();
+    return screen;
+}
+
 async function seed() {
     await mongoose.connect(`${process.env.MONGODB_URI}/MovieTix`);
     console.log('Connected to database');
+
+    const screen = await ensureDefaultScreen();
+    console.log(`Default screen ready: ${screen.name} (${screen.totalCapacity} seats)`);
 
     for (const movieData of SEED_MOVIES) {
         const movie = await Movie.findByIdAndUpdate(
@@ -180,6 +219,10 @@ async function seed() {
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
         console.log(`Upserted movie: ${movie.title}`);
+
+        // Re-running this script would otherwise insert a fresh duplicate batch
+        // of shows every time, since insertMany has no natural dedup key here.
+        await Show.deleteMany({ movie: movie._id });
 
         const showsToCreate = [];
         for (let dayOffset = 0; dayOffset < DAYS_AHEAD; dayOffset++) {
@@ -190,6 +233,7 @@ async function seed() {
             for (const time of SHOW_TIMES) {
                 showsToCreate.push({
                     movie: movie._id,
+                    screen: screen._id,
                     showDateTime: new Date(`${dateStr}T${time}:00+05:30`),
                     showPrice: SHOW_PRICE,
                     occupiedSeats: {},

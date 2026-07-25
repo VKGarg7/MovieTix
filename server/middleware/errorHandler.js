@@ -1,5 +1,5 @@
 // Maps a thrown error to { statusCode, message, code }. Falls back to 500/generic message.
-function mapError(err) {
+export function mapError(err) {
     if (err.isOperational) {
         return { statusCode: err.statusCode, message: err.message, code: err.code };
     }

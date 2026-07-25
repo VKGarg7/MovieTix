@@ -8,7 +8,7 @@ import toast from "react-hot-toast";
 
 const AddShows = () => {
 
-  const {axios , getToken , user , image_base_url} = useAppContext();
+  const {axios , getToken , user , image_base_url , fetchTheaters , fetchScreens} = useAppContext();
 
   const currency = import.meta.env.VITE_CURRENCY;
   const [nowPlayingMovies, setNowPlayingMovies] = useState([]);
@@ -18,14 +18,19 @@ const AddShows = () => {
   const [showPrice, setShowPrice] = useState("");
   const [addingShow, setAddingShow] = useState(false);
 
+  const [theaters, setTheaters] = useState([]);
+  const [selectedTheater, setSelectedTheater] = useState("");
+  const [screens, setScreens] = useState([]);
+  const [selectedScreen, setSelectedScreen] = useState("");
+
   const fetchNowPlayingMovies = async () => {
     try {
       const { data } = await axios.get("/api/show/now-playing", {
         headers: { Authorization: `Bearer ${await getToken()}` }})
-        if(data.succes) {
+        if(data.success) {
           setNowPlayingMovies(data.movies);
         }
-      
+
     } catch (error) {
       console.error("Error fetching movies:", error);
     }
@@ -63,7 +68,7 @@ const AddShows = () => {
     try {
       setAddingShow(true)
 
-      if(!selectedMovie || Object.keys(dateTimeSelection).length === 0 || !showPrice) {
+      if(!selectedMovie || !selectedScreen || Object.keys(dateTimeSelection).length === 0 || !showPrice) {
         return toast('Missing required fields')
       }
 
@@ -71,6 +76,7 @@ const AddShows = () => {
 
       const payload = {
         movieId: selectedMovie,
+        screenId: selectedScreen,
         showsInput,
         showPrice: Number(showPrice)
       }
@@ -80,6 +86,8 @@ const AddShows = () => {
       if(data.success) {
         toast.success(data.message)
         setSelectedMovie(null)
+        setSelectedTheater("")
+        setSelectedScreen("")
         setDateTimeSelection({})
         setShowPrice("")
       }else{
@@ -97,12 +105,23 @@ const AddShows = () => {
   useEffect(() => {
       if(user){
         fetchNowPlayingMovies();
+        fetchTheaters().then(setTheaters);
       }
-    // only re-run when the user changes, not on every render
+    // fetchNowPlayingMovies is a new function each render and intentionally
+    // excluded so this only re-runs when the user changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, fetchTheaters]);
 
-  
+  useEffect(() => {
+    setSelectedScreen("");
+    if (selectedTheater) {
+      fetchScreens(selectedTheater).then(setScreens);
+    } else {
+      setScreens([]);
+    }
+  }, [selectedTheater, fetchScreens]);
+
+
   return nowPlayingMovies.length > 0 ? (
     <>
       <Title text1="Add" text2="Shows" />
@@ -145,6 +164,42 @@ const AddShows = () => {
               <p className="text-gray-400 text-sm">{movie.release_date}</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* theater and screen selection */}
+      <div className="mt-8 flex flex-wrap gap-6">
+        <div>
+          <label className="block text-sm font-medium mb-2">Theater</label>
+          <select
+            value={selectedTheater}
+            onChange={(e) => setSelectedTheater(e.target.value)}
+            className="border border-gray-600 bg-transparent px-3 py-2 rounded-md outline-none"
+          >
+            <option value="" className="text-black">Select a theater</option>
+            {theaters.map((theater) => (
+              <option key={theater._id} value={theater._id} className="text-black">
+                {theater.name} — {theater.city}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Screen</label>
+          <select
+            value={selectedScreen}
+            onChange={(e) => setSelectedScreen(e.target.value)}
+            disabled={!selectedTheater}
+            className="border border-gray-600 bg-transparent px-3 py-2 rounded-md outline-none disabled:opacity-50"
+          >
+            <option value="" className="text-black">Select a screen</option>
+            {screens.map((screen) => (
+              <option key={screen._id} value={screen._id} className="text-black">
+                {screen.name} ({screen.totalCapacity} seats)
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

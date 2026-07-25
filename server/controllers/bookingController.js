@@ -4,10 +4,10 @@ import stripe from 'stripe';
 import { inngest } from '../inngest/index.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
+import { buildSeatCapacityByRow, isSeatValidForScreen } from '../utils/seatId.js';
 
 
 const MAX_SEATS_PER_BOOKING = 5;
-const SEAT_PATTERN = /^[A-J][1-9]$/;
 
 export const createBooking = asyncHandler(async(req , res)=> {
     const {userId} = req.auth();
@@ -21,7 +21,14 @@ export const createBooking = asyncHandler(async(req , res)=> {
     if (selectedSeats.length > MAX_SEATS_PER_BOOKING) {
         throw new AppError(`You can book at most ${MAX_SEATS_PER_BOOKING} seats`, 400, 'TOO_MANY_SEATS');
     }
-    if (!selectedSeats.every(seat => typeof seat === 'string' && SEAT_PATTERN.test(seat))) {
+
+    const showForSeatCheck = await Show.findById(showId).populate('screen');
+    if (!showForSeatCheck) {
+        throw new AppError('Show not found', 404, 'SHOW_NOT_FOUND');
+    }
+
+    const seatCapacityByRow = buildSeatCapacityByRow(showForSeatCheck.screen);
+    if (!selectedSeats.every(seat => isSeatValidForScreen(seat, seatCapacityByRow))) {
         throw new AppError('Invalid seat selection', 400, 'INVALID_SEATS');
     }
 

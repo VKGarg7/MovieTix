@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import { mapError } from '../../middleware/errorHandler.js';
 
 // Minimal mock logger matching the shape req.log has via pino-http in production.
 export const createMockLogger = () => ({
@@ -11,12 +12,14 @@ export const createMockLogger = () => ({
 // Builds a mock Express req for calling controllers directly, bypassing the
 // HTTP layer and Clerk middleware — controllers only need req.auth(), req.body,
 // req.params, req.headers, and req.log.
-export const createMockReq = ({ userId, body = {}, params = {}, headers = {} } = {}) => ({
+export const createMockReq = ({ userId, body = {}, params = {}, query = {}, headers = {}, adminContext } = {}) => ({
     auth: () => ({ userId }),
     body,
     params,
+    query,
     headers,
     log: createMockLogger(),
+    ...(adminContext ? { adminContext } : {}),
 });
 
 // Builds a mock Express res that records what was sent, resolving a promise
@@ -48,14 +51,10 @@ export const invokeController = async (controller, req) => {
     await controller(req, res, next);
 
     if (forwardedError) {
-        const statusCode = forwardedError.statusCode || 500;
+        const { statusCode, message, code } = mapError(forwardedError);
         return {
             statusCode,
-            body: {
-                success: false,
-                message: forwardedError.message,
-                code: forwardedError.code || 'INTERNAL_ERROR',
-            },
+            body: { success: false, message, code },
         };
     }
 

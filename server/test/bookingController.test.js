@@ -21,13 +21,15 @@ vi.mock('../inngest/index.js', () => ({
     inngest: { send: vi.fn().mockResolvedValue(undefined) },
 }));
 
-let Show, Booking, Movie, createBooking;
+let Show, Booking, Movie, Theater, Screen, createBooking;
 
 beforeAll(async () => {
     await startTestDb();
     ({ default: Show } = await import('../models/Show.js'));
     ({ default: Booking } = await import('../models/Booking.js'));
     ({ default: Movie } = await import('../models/Movie.js'));
+    ({ default: Theater } = await import('../models/Theater.js'));
+    ({ default: Screen } = await import('../models/Screen.js'));
     ({ createBooking } = await import('../controllers/bookingController.js'));
 });
 
@@ -55,10 +57,33 @@ const createTestMovie = async (overrides = {}) => {
     });
 };
 
-const createTestShow = async (overrides = {}) => {
+// Defaults match the old hardcoded A-J x 9 grid, so existing seat-id assertions
+// (e.g. "J9" valid, "Z1"/"A0"/"A11" invalid) still hold against a real screen config.
+const DEFAULT_ROWS = 'ABCDEFGHIJ'.split('').map((label) => ({ label, seatCount: 9, seatType: 'regular' }));
+
+const createTestScreen = async (rows = DEFAULT_ROWS) => {
+    const theater = await Theater.create({
+        name: 'Test Theater',
+        slug: 'test-theater-test-city',
+        city: 'Test City',
+        address: '123 Test St',
+        geolocation: { lat: 0, lng: 0 },
+        contactEmail: 'test-theater@example.com',
+    });
+
+    return Screen.create({
+        theater: theater._id,
+        name: 'Screen 1',
+        rows,
+    });
+};
+
+const createTestShow = async (overrides = {}, rows = DEFAULT_ROWS) => {
     const movie = await createTestMovie();
+    const screen = await createTestScreen(rows);
     return Show.create({
         movie: movie._id,
+        screen: screen._id,
         showDateTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
         showPrice: 200,
         occupiedSeats: {},
@@ -204,5 +229,41 @@ describe('createBooking — seat ID validation', () => {
         expect(resultNoShowId.body.code).toBe('INVALID_INPUT');
         expect(resultEmptySeats.statusCode).toBe(400);
         expect(resultEmptySeats.body.code).toBe('INVALID_INPUT');
+    });
+});
+
+describe('createBooking — validates against the show\'s actual screen config', () => {
+    it('accepts a seat in a short premium row and rejects one past its seat count', async () => {
+        // Proves validation isn't a relabeled 10x9 grid: row C only has 6 seats here,
+        // so C6 is valid and C7 must be rejected even though "C" exists.
+        const show = await createTestShow({}, [
+            { label: 'A', seatCount: 9, seatType: 'regular' },
+            { label: 'B', seatCount: 9, seatType: 'regular' },
+            { label: 'C', seatCount: 6, seatType: 'premium' },
+        ]);
+
+        const validReq = bookingReq({ userId: 'user-a', showId: show._id.toString(), selectedSeats: ['C6'] });
+        const validResult = await invokeController(createBooking, validReq);
+        expect(validResult.statusCode).toBe(200);
+
+        const invalidReq = bookingReq({ userId: 'user-b', showId: show._id.toString(), selectedSeats: ['C7'] });
+        const invalidResult = await invokeController(createBooking, invalidReq);
+        expect(invalidResult.statusCode).toBe(400);
+        expect(invalidResult.body.code).toBe('INVALID_SEATS');
+    });
+
+    it('rejects a row letter that does not exist on this screen even if another screen has it', async () => {
+        // A 3-row screen (A-C) shouldn't accept "J9", which was only valid under the old hardcoded grid.
+        const show = await createTestShow({}, [
+            { label: 'A', seatCount: 9, seatType: 'regular' },
+            { label: 'B', seatCount: 9, seatType: 'regular' },
+            { label: 'C', seatCount: 6, seatType: 'premium' },
+        ]);
+
+        const req = bookingReq({ userId: 'user-a', showId: show._id.toString(), selectedSeats: ['J9'] });
+        const result = await invokeController(createBooking, req);
+
+        expect(result.statusCode).toBe(400);
+        expect(result.body.code).toBe('INVALID_SEATS');
     });
 });
