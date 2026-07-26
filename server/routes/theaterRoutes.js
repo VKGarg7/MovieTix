@@ -48,6 +48,7 @@ theaterRouter.get('/', getTheaters);
  *             address: DLF Mall of India, Sector 18
  *             geolocation: { lat: 28.5677, lng: 77.3219 }
  *             contactEmail: pvr.noida@example.com
+ *             timezone: Asia/Kolkata
  *     responses:
  *       201:
  *         description: Theater created

@@ -29,6 +29,7 @@ const createTestTheater = async (overrides = {}) => Theater.create({
     slug: 'pvr-noida',
     city: 'Noida',
     address: 'DLF Mall of India',
+    timezone: 'Asia/Kolkata',
     geolocation: { lat: 28.5677, lng: 77.3219 },
     contactEmail: 'pvr.noida@example.com',
     isActive: true,

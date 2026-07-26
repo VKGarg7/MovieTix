@@ -1,17 +1,16 @@
-// Local-dev helper: inserts a handful of real movies (matching actual TMDB
-// IDs/poster paths) with upcoming shows, so the booking flow can be tested
-// without hitting the TMDB API.
-// Usage: node scripts/seedDummyMovies.js
 import 'dotenv/config';
 import mongoose from 'mongoose';
+import { DateTime } from 'luxon';
 import Movie from '../models/Movie.js';
 import Show from '../models/Show.js';
 import Theater from '../models/Theater.js';
 import Screen from '../models/Screen.js';
 
+const THEATER_TIMEZONE = 'Asia/Kolkata';
+
 const SEED_MOVIES = [
     {
-        _id: '27205', // Inception (2010)
+        _id: '27205',
         title: 'Inception',
         overview: 'Cobb, a skilled thief who commits corporate espionage by infiltrating the subconscious of his targets is offered a chance to regain his old life as payment for a task considered to be impossible: "inception", the implantation of another person\'s idea into a target\'s subconscious.',
         poster_path: '/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg',
@@ -28,7 +27,7 @@ const SEED_MOVIES = [
         runtime: 148,
     },
     {
-        _id: '155', // The Dark Knight (2008)
+        _id: '155',
         title: 'The Dark Knight',
         overview: 'Batman raises the stakes in his war on crime. With the help of Lt. Jim Gordon and District Attorney Harvey Dent, Batman sets out to dismantle the remaining criminal organizations that plague the streets.',
         poster_path: '/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
@@ -45,7 +44,7 @@ const SEED_MOVIES = [
         runtime: 152,
     },
     {
-        _id: '10681', // WALL·E (2008)
+        _id: '10681',
         title: 'WALL·E',
         overview: 'WALL-E is the last robot left on an Earth that has been overrun with garbage and all humans have fled to outer space. For 700 years he has continued to try and clean up the planet, but has developed some rather interesting human-like qualities.',
         poster_path: '/hbhFnRzzg6ZDmm8YAmxBnQpQIPh.jpg',
@@ -62,7 +61,7 @@ const SEED_MOVIES = [
         runtime: 98,
     },
     {
-        _id: '19995', // Avatar (2009)
+        _id: '19995', 
         title: 'Avatar',
         overview: 'In the 22nd century, a paraplegic Marine is dispatched to the moon Pandora on a unique mission, but becomes torn between following orders and protecting an alien civilization.',
         poster_path: '/kyeqWdyUXW608qlYkRqosgbbJyK.jpg',
@@ -79,7 +78,7 @@ const SEED_MOVIES = [
         runtime: 162,
     },
     {
-        _id: '424', // Schindler's List (1993)
+        _id: '424',
         title: "Schindler's List",
         overview: 'The true story of how businessman Oskar Schindler saved over a thousand Jewish lives from the Nazis while they worked as slaves in his factory during World War II.',
         poster_path: '/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg',
@@ -96,7 +95,7 @@ const SEED_MOVIES = [
         runtime: 195,
     },
     {
-        _id: '8363', // Superbad (2007)
+        _id: '8363',
         title: 'Superbad',
         overview: 'Two co-dependent high school seniors are forced to deal with separation anxiety after their plan to stage a booze-soaked party goes awry.',
         poster_path: '/ek8e8txUyUwd2BNqj6lFEerJfbq.jpg',
@@ -113,7 +112,7 @@ const SEED_MOVIES = [
         runtime: 113,
     },
     {
-        _id: '346698', // Barbie (2023)
+        _id: '346698',
         title: 'Barbie',
         overview: 'Barbie suffers a crisis that leads her to question her world and her existence.',
         poster_path: '/iuFNMS8U5cb6xfzi51Dbkovj7vM.jpg',
@@ -130,7 +129,7 @@ const SEED_MOVIES = [
         runtime: 114,
     },
     {
-        _id: '569094', // Spider-Man: Across the Spider-Verse (2023)
+        _id: '569094',
         title: 'Spider-Man: Across the Spider-Verse',
         overview: 'After reuniting with Gwen Stacy, Brooklyn\'s full-time, friendly neighborhood Spider-Man is catapulted across the Multiverse, where he encounters the Spider Society.',
         poster_path: '/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg',
@@ -147,7 +146,7 @@ const SEED_MOVIES = [
         runtime: 140,
     },
     {
-        _id: '609681', // The Marvels (2023)
+        _id: '609681',
         title: 'The Marvels',
         overview: 'Carol Danvers gets her powers entangled with those of Kamala Khan and Monica Rambeau, forcing them to work together to save the universe.',
         poster_path: '/9GBhzXMFjgcZ3FdR9w3bUMMTps5.jpg',
@@ -167,12 +166,8 @@ const SEED_MOVIES = [
 
 const SHOW_TIMES = ['10:00', '14:00', '18:30', '21:45'];
 const SHOW_PRICE = 250;
-// Long window so seeded shows don't age out of the "upcoming shows" queries
-// for months, without needing to re-run this script regularly.
 const DAYS_AHEAD = 90;
 
-// Default screen for these seeded shows. Mixed seat types (regular + premium)
-// so the seat layout demonstrably isn't just a relabeled fixed grid.
 async function ensureDefaultScreen() {
     const theater = await Theater.findOneAndUpdate(
         { name: 'MovieTix Multiplex', city: 'Demo City' },
@@ -181,6 +176,7 @@ async function ensureDefaultScreen() {
             slug: 'movietix-multiplex-demo-city',
             city: 'Demo City',
             address: '1 Demo Street, Demo City',
+            timezone: THEATER_TIMEZONE,
             geolocation: { lat: 0, lng: 0 },
             contactEmail: 'demo-theater@example.com',
             isActive: true,
@@ -194,8 +190,6 @@ async function ensureDefaultScreen() {
         { label: 'J', seatCount: 9, seatType: 'recliner' },
     ];
 
-    // findOneAndUpdate skips pre('validate') hooks (totalCapacity wouldn't be
-    // derived), so upsert via find-then-save instead.
     let screen = await Screen.findOne({ theater: theater._id, name: 'Screen 1' });
     if (!screen) {
         screen = new Screen({ theater: theater._id, name: 'Screen 1' });
@@ -220,8 +214,6 @@ async function seed() {
         );
         console.log(`Upserted movie: ${movie.title}`);
 
-        // Re-running this script would otherwise insert a fresh duplicate batch
-        // of shows every time, since insertMany has no natural dedup key here.
         await Show.deleteMany({ movie: movie._id });
 
         const showsToCreate = [];
@@ -234,7 +226,7 @@ async function seed() {
                 showsToCreate.push({
                     movie: movie._id,
                     screen: screen._id,
-                    showDateTime: new Date(`${dateStr}T${time}:00+05:30`),
+                    showDateTime: DateTime.fromISO(`${dateStr}T${time}`, { zone: THEATER_TIMEZONE }).toJSDate(),
                     showPrice: SHOW_PRICE,
                     occupiedSeats: {},
                 });

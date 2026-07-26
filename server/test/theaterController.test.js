@@ -22,6 +22,7 @@ const validTheater = (overrides = {}) => ({
     name: 'PVR',
     city: 'Noida',
     address: 'DLF Mall of India, Sector 18',
+    timezone: 'Asia/Kolkata',
     geolocation: { lat: 28.5677, lng: 77.3219 },
     contactEmail: 'pvr.noida@example.com',
     ...overrides,
@@ -58,6 +59,24 @@ describe('createTheater', () => {
 
         expect(result.statusCode).toBe(400);
         expect(result.body.code).toBe('INVALID_GEOLOCATION');
+    });
+
+    it('rejects a missing timezone', async () => {
+        const req = createMockReq({ userId: 'admin-1', body: validTheater({ timezone: undefined }) });
+
+        const result = await invokeController(createTheater, req);
+
+        expect(result.statusCode).toBe(400);
+        expect(result.body.code).toBe('INVALID_INPUT');
+    });
+
+    it('rejects an invalid IANA timezone', async () => {
+        const req = createMockReq({ userId: 'admin-1', body: validTheater({ timezone: 'Not/AZone' }) });
+
+        const result = await invokeController(createTheater, req);
+
+        expect(result.statusCode).toBe(400);
+        expect(result.body.code).toBe('INVALID_TIMEZONE');
     });
 
     it('rejects a duplicate theater name in the same city', async () => {

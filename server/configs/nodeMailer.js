@@ -10,12 +10,13 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const sendEmail = async ({to , subject , body})=> {
+const sendEmail = async ({to , subject , body, attachments})=> {
     const response = await transporter.sendMail({
         from: process.env.GMAIL_USER,
         to,
         subject,
         html: body,
+        ...(attachments ? { attachments } : {}),
     })
     return response
 }

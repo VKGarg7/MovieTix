@@ -1,3 +1,4 @@
+import { IANAZone } from 'luxon';
 import Theater from '../models/Theater.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
@@ -5,12 +6,14 @@ import slugify from '../utils/slugify.js';
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// API to create a theater (super-admin only)
 export const createTheater = asyncHandler(async (req, res) => {
-    const { name, city, address, geolocation, contactEmail, isActive } = req.body;
+    const { name, city, address, geolocation, contactEmail, isActive, timezone } = req.body;
 
-    if (!name || !city || !address || !contactEmail) {
-        throw new AppError('name, city, address and contactEmail are required', 400, 'INVALID_INPUT');
+    if (!name || !city || !address || !contactEmail || !timezone) {
+        throw new AppError('name, city, address, contactEmail and timezone are required', 400, 'INVALID_INPUT');
+    }
+    if (!IANAZone.isValidZone(timezone)) {
+        throw new AppError('timezone must be a valid IANA zone name (e.g. "Asia/Kolkata")', 400, 'INVALID_TIMEZONE');
     }
 
     const lat = geolocation?.lat;
@@ -27,6 +30,7 @@ export const createTheater = asyncHandler(async (req, res) => {
         slug: slugify(`${name}-${city}`),
         city,
         address,
+        timezone,
         geolocation: { lat, lng },
         contactEmail,
         isActive: isActive ?? true,
@@ -35,7 +39,6 @@ export const createTheater = asyncHandler(async (req, res) => {
     res.status(201).json({ success: true, theater });
 });
 
-// API to list theaters, optionally filtered by city
 export const getTheaters = asyncHandler(async (req, res) => {
     const { city } = req.query;
     const filter = city ? { city: new RegExp(`^${escapeRegex(city)}$`, 'i') } : {};
