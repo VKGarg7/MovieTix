@@ -2,15 +2,11 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import { startTestDb, stopTestDb, clearTestDb } from './helpers/testDb.js';
 import { createMockReq, invokeController } from './helpers/mockReqRes.js';
 
-// createBooking talks to real Stripe after reserving seats; mock it so tests
-// don't need network access or real API keys, while the seat-reservation
-// logic under test (Show.findOneAndUpdate) runs against the real in-memory DB.
 vi.mock('stripe', () => {
     const checkoutSessionsCreate = vi.fn().mockResolvedValue({
         url: 'https://checkout.stripe.com/test-session',
     });
-    // bookingController does `new stripe(...)`, so the mock constructor must
-    // be a real function/class, not an arrow function (arrows can't be `new`ed).
+
     function MockStripe() {
         this.checkout = { sessions: { create: checkoutSessionsCreate } };
     }
@@ -57,8 +53,6 @@ const createTestMovie = async (overrides = {}) => {
     });
 };
 
-// Defaults match the old hardcoded A-J x 9 grid, so existing seat-id assertions
-// (e.g. "J9" valid, "Z1"/"A0"/"A11" invalid) still hold against a real screen config.
 const DEFAULT_ROWS = 'ABCDEFGHIJ'.split('').map((label) => ({ label, seatCount: 9, seatType: 'regular' }));
 
 const createTestScreen = async (rows = DEFAULT_ROWS) => {
@@ -67,6 +61,7 @@ const createTestScreen = async (rows = DEFAULT_ROWS) => {
         slug: 'test-theater-test-city',
         city: 'Test City',
         address: '123 Test St',
+        timezone: 'Asia/Kolkata',
         geolocation: { lat: 0, lng: 0 },
         contactEmail: 'test-theater@example.com',
     });
@@ -120,7 +115,6 @@ describe('createBooking — concurrent seat reservation', () => {
         expect(conflictResult.body.success).toBe(false);
         expect(conflictResult.body.code).toBe('SEATS_UNAVAILABLE');
 
-        // exactly one booking document should have been created for this seat
         const bookings = await Booking.find({ show: show._id.toString() });
         expect(bookings).toHaveLength(1);
         expect(bookings[0].bookedSeats).toEqual(['A1']);
@@ -234,8 +228,7 @@ describe('createBooking — seat ID validation', () => {
 
 describe('createBooking — validates against the show\'s actual screen config', () => {
     it('accepts a seat in a short premium row and rejects one past its seat count', async () => {
-        // Proves validation isn't a relabeled 10x9 grid: row C only has 6 seats here,
-        // so C6 is valid and C7 must be rejected even though "C" exists.
+
         const show = await createTestShow({}, [
             { label: 'A', seatCount: 9, seatType: 'regular' },
             { label: 'B', seatCount: 9, seatType: 'regular' },
@@ -253,7 +246,6 @@ describe('createBooking — validates against the show\'s actual screen config',
     });
 
     it('rejects a row letter that does not exist on this screen even if another screen has it', async () => {
-        // A 3-row screen (A-C) shouldn't accept "J9", which was only valid under the old hardcoded grid.
         const show = await createTestShow({}, [
             { label: 'A', seatCount: 9, seatType: 'regular' },
             { label: 'B', seatCount: 9, seatType: 'regular' },

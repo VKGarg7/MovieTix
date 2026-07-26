@@ -1,5 +1,3 @@
-// Shared test-data factories for controller/model tests. Each accepts
-// overrides so individual tests can vary just the fields they care about.
 import Theater from '../../models/Theater.js';
 import Screen from '../../models/Screen.js';
 import Movie from '../../models/Movie.js';
@@ -10,6 +8,7 @@ export const createTestTheater = async (overrides = {}) => Theater.create({
     slug: 'pvr-noida',
     city: 'Noida',
     address: 'DLF Mall of India',
+    timezone: 'Asia/Kolkata',
     geolocation: { lat: 28.5677, lng: 77.3219 },
     contactEmail: 'pvr.noida@example.com',
     ...overrides,

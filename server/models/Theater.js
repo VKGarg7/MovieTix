@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { IANAZone } from "luxon";
 
 const theaterSchema = new mongoose.Schema(
     {
@@ -6,6 +7,15 @@ const theaterSchema = new mongoose.Schema(
         slug: { type: String, required: true, lowercase: true, trim: true },
         city: { type: String, required: true, trim: true },
         address: { type: String, required: true, trim: true },
+        timezone: {
+            type: String,
+            required: true,
+            trim: true,
+            validate: {
+                validator: (tz) => IANAZone.isValidZone(tz),
+                message: props => `${props.value} is not a valid IANA timezone`,
+            },
+        },
         geolocation: {
             lat: { type: Number, min: -90, max: 90, required: true },
             lng: { type: Number, min: -180, max: 180, required: true },
@@ -18,11 +28,13 @@ const theaterSchema = new mongoose.Schema(
             match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid contact email'],
         },
         isActive: { type: Boolean, default: true },
+        cancellationPolicy: {
+            cutoffHoursBeforeShow: { type: Number, default: 2, min: 0 },
+        },
     },
     { timestamps: true }
 );
 
-// Same theater name can exist in different cities, but not twice in the same city.
 theaterSchema.index({ name: 1, city: 1 }, { unique: true });
 
 const Theater = mongoose.model('Theater', theaterSchema);

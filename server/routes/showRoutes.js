@@ -1,5 +1,5 @@
 import express from "express"
-import { addShow, getNowPlayingMovies, getShow, getShows } from "../controllers/showController.js";
+import { addShow, deleteShow, editShow, getNowPlayingMovies, getShow, getShows } from "../controllers/showController.js";
 import { protectAdmin } from "../middleware/auth.js";
 import { publicApiLimiter } from "../middleware/rateLimit.js";
 
@@ -133,5 +133,91 @@ showRouter.get('/all' , publicApiLimiter, getShows)
  *         $ref: '#/components/responses/ServerError'
  */
 showRouter.get('/:movieId' , publicApiLimiter, getShow)
+
+/**
+ * @openapi
+ * /show/{showId}:
+ *   put:
+ *     summary: Edit a show's date/time and/or price
+ *     tags: [Show]
+ *     security:
+ *       - bearerAuth: []
+ *     description: >
+ *       Auth: admin only, scoped to the owning theater. Changing showDateTime is blocked
+ *       with a 409 if the show has any paid bookings; any pending (unpaid) reservations
+ *       are invalidated (seats released, booking deleted, user notified by email).
+ *     parameters:
+ *       - in: path
+ *         name: showId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               showDateTime: { type: string, example: "2026-08-01T18:30:00+05:30" }
+ *               showPrice: { type: number, example: 300 }
+ *     responses:
+ *       200:
+ *         description: Show updated
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Show updated successfully"
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         $ref: '#/components/responses/Conflict'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+showRouter.put('/:showId', protectAdmin, editShow)
+
+/**
+ * @openapi
+ * /show/{showId}:
+ *   delete:
+ *     summary: Cancel/delete a show
+ *     tags: [Show]
+ *     security:
+ *       - bearerAuth: []
+ *     description: >
+ *       Auth: admin only, scoped to the owning theater. Soft-deletes (isCancelled: true)
+ *       so historical booking records remain valid; blocked with a 409 if the show has
+ *       any paid bookings. Any pending (unpaid) reservations are invalidated.
+ *     parameters:
+ *       - in: path
+ *         name: showId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Show cancelled
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Show cancelled successfully"
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         $ref: '#/components/responses/Conflict'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+showRouter.delete('/:showId', protectAdmin, deleteShow)
 
 export default showRouter;

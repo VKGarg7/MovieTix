@@ -1,10 +1,15 @@
 import Show from '../models/Show.js';
 import Booking from '../models/Booking.js';
+import Movie from '../models/Movie.js';
 import stripe from 'stripe';
 import { inngest } from '../inngest/index.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
 import { buildSeatCapacityByRow, isSeatValidForScreen } from '../utils/seatId.js';
+import { buildBookingIcs } from '../utils/calendarEvent.js';
+import { releaseSeatsAtomic, occupySeatsAtomic } from '../utils/seatOperations.js';
+import { SCREEN_WITH_THEATER } from '../utils/theaterScope.js';
+import { loadOwnedBooking } from '../utils/bookingOwnership.js';
 
 
 const MAX_SEATS_PER_BOOKING = 5;
@@ -14,7 +19,6 @@ export const createBooking = asyncHandler(async(req , res)=> {
     const {showId , selectedSeats} = req.body;
     const {origin} =  req.headers;
 
-    // validate input
     if (!showId || !Array.isArray(selectedSeats) || selectedSeats.length === 0) {
         throw new AppError('showId and selectedSeats are required', 400, 'INVALID_INPUT');
     }
@@ -23,7 +27,7 @@ export const createBooking = asyncHandler(async(req , res)=> {
     }
 
     const showForSeatCheck = await Show.findById(showId).populate('screen');
-    if (!showForSeatCheck) {
+    if (!showForSeatCheck || showForSeatCheck.isCancelled) {
         throw new AppError('Show not found', 404, 'SHOW_NOT_FOUND');
     }
 
@@ -32,7 +36,6 @@ export const createBooking = asyncHandler(async(req , res)=> {
         throw new AppError('Invalid seat selection', 400, 'INVALID_SEATS');
     }
 
-    // atomically reserve the seats: only succeeds if none of them are already taken
     const seatConditions = selectedSeats.map(seat => ({ [`occupiedSeats.${seat}`]: { $exists: false } }));
     const seatUpdates = Object.fromEntries(selectedSeats.map(seat => [`occupiedSeats.${seat}`, userId]));
 
@@ -51,7 +54,6 @@ export const createBooking = asyncHandler(async(req , res)=> {
         );
     }
 
-    //create a new booking
     const booking = await Booking.create({
         user: userId,
         show: showId,
@@ -60,10 +62,8 @@ export const createBooking = asyncHandler(async(req , res)=> {
     })
 
     try {
-        // stripe gateway Initialize
         const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
 
-        // creating line items for Stripe payment
         const line_items = [{
             price_data: {
                 currency: 'usd',
@@ -83,13 +83,12 @@ export const createBooking = asyncHandler(async(req , res)=> {
             metadata: {
                 bookingId: booking._id.toString(),
             },
-            expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // expires in 30 minutes
+            expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
         })
 
         booking.paymentLink = session.url
         await booking.save()
 
-        // run inngest scheduler to check payment status after 10 minutes
         await inngest.send({
             name: 'app/checkpayment',
             data: {
@@ -101,27 +100,102 @@ export const createBooking = asyncHandler(async(req , res)=> {
         res.json({success: true, url: session.url});
 
     } catch (error) {
-        // payment setup failed: release the reserved seats and remove the booking
         req.log.error({ err: error, bookingId: booking._id.toString(), showId }, 'Stripe checkout setup failed, releasing seats');
-        await Show.findByIdAndUpdate(showId, {
-            $unset: Object.fromEntries(selectedSeats.map(seat => [`occupiedSeats.${seat}`, ""]))
-        });
+        await releaseSeatsAtomic(showId, selectedSeats);
         await Booking.findByIdAndDelete(booking._id);
         throw error;
     }
 });
 
 
-// API to get the payment status of a booking (used by the client to poll after checkout)
 export const getBookingStatus = asyncHandler(async(req, res) => {
     const {userId} = req.auth();
-    const booking = await Booking.findById(req.params.bookingId);
-
-    if (!booking || booking.user !== userId) {
-        throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
-    }
+    const booking = await loadOwnedBooking(req.params.bookingId, userId);
 
     res.json({success: true, isPaid: booking.isPaid});
+});
+
+
+export const getBookingCalendar = asyncHandler(async(req, res) => {
+    const {userId} = req.auth();
+    const booking = await loadOwnedBooking(req.params.bookingId, userId);
+
+    if (!booking.isPaid) {
+        throw new AppError('Only paid bookings have a calendar event', 400, 'BOOKING_NOT_PAID');
+    }
+
+    const show = await Show.findById(booking.show).populate(SCREEN_WITH_THEATER);
+    if (!show) {
+        throw new AppError('Show not found', 404, 'SHOW_NOT_FOUND');
+    }
+
+    const movie = await Movie.findById(show.movie);
+    if (!movie) {
+        throw new AppError('Movie not found', 404, 'MOVIE_NOT_FOUND');
+    }
+
+    const icsContent = buildBookingIcs({
+        movieTitle: movie.title,
+        runtimeMinutes: movie.runtime,
+        showDateTime: show.showDateTime,
+        theater: show.screen?.theater,
+        bookingId: booking._id.toString(),
+    });
+
+    res.set({
+        'Content-Type': 'text/calendar; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${movie.title.replace(/[^a-z0-9]/gi, '_')}.ics"`,
+    });
+    res.send(icsContent);
+});
+
+
+export const cancelBooking = asyncHandler(async(req, res) => {
+    const {userId} = req.auth();
+    const {bookingId} = req.params;
+
+    const booking = await loadOwnedBooking(bookingId, userId);
+
+    if (booking.status === 'cancelled') {
+        throw new AppError('Booking is already cancelled', 409, 'ALREADY_CANCELLED');
+    }
+    if (booking.status === 'pending-cancellation') {
+        throw new AppError('Booking cancellation is already being processed, please contact support', 409, 'CANCELLATION_PENDING');
+    }
+    if (!booking.isPaid || !booking.paymentIntentId) {
+        throw new AppError('Only paid bookings can be cancelled', 400, 'BOOKING_NOT_PAID');
+    }
+
+    const show = await Show.findById(booking.show).populate(SCREEN_WITH_THEATER);
+    if (!show) {
+        throw new AppError('Show not found', 404, 'SHOW_NOT_FOUND');
+    }
+
+    const cutoffHours = show.screen?.theater?.cancellationPolicy?.cutoffHoursBeforeShow ?? 2;
+    const cutoffMs = cutoffHours * 60 * 60 * 1000;
+    if (show.showDateTime.getTime() - Date.now() < cutoffMs) {
+        throw new AppError(`Bookings can only be cancelled at least ${cutoffHours} hour(s) before the showtime`, 400, 'CANCELLATION_WINDOW_PASSED');
+    }
+
+    await releaseSeatsAtomic(booking.show, booking.bookedSeats);
+
+    try {
+        const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
+        await stripeInstance.refunds.create({ payment_intent: booking.paymentIntentId });
+
+        booking.status = 'cancelled';
+        booking.isPaid = false;
+        await booking.save();
+
+        req.log.info({ bookingId, userId }, 'Booking cancelled and refunded');
+        res.json({ success: true, message: 'Booking cancelled and refund initiated' });
+    } catch (error) {
+        req.log.error({ err: error, bookingId }, 'Refund failed after seats released, re-occupying seats for manual review');
+        await occupySeatsAtomic(booking.show, booking.bookedSeats, userId);
+        booking.status = 'pending-cancellation';
+        await booking.save();
+        throw error;
+    }
 });
 
 
@@ -129,7 +203,7 @@ export const getOccupiedSeats = asyncHandler(async(req, res) => {
     const {showId} = req.params;
     const showData = await Show.findById(showId)
 
-    if (!showData) {
+    if (!showData || showData.isCancelled) {
         throw new AppError('Show not found', 404, 'SHOW_NOT_FOUND');
     }
 

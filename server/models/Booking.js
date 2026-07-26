@@ -7,6 +7,8 @@ const bookingSchema = new mongoose.Schema({
     bookedSeats: {type: Array, required: true},
     isPaid: {type: Boolean, default: false},
     paymentLink: {type: String},
+    paymentIntentId: {type: String},
+    status: {type: String, enum: ['pending', 'confirmed', 'cancelled', 'pending-cancellation'], default: 'pending'},
 } , {timestamps: true});
 
 const Booking = mongoose.model('Booking', bookingSchema);

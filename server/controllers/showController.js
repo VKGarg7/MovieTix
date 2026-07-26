@@ -1,15 +1,20 @@
 import mongoose from 'mongoose';
 import axios from 'axios';
+import { DateTime } from 'luxon';
 import Movie from '../models/Movie.js';
 import Show from '../models/Show.js';
 import Screen from '../models/Screen.js';
+import Booking from '../models/Booking.js';
+import User from '../models/User.js';
+import sendEmail from '../configs/nodeMailer.js';
 import { inngest } from '../inngest/index.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
-import { assertScreenBelongsToTheater } from '../utils/theaterScope.js';
+import { assertScreenBelongsToTheater, hasPaidBookings } from '../utils/theaterScope.js';
+import { releaseSeatsAtomic } from '../utils/seatOperations.js';
+import { renderEmail, highlight } from '../utils/emailTemplate.js';
 
 
-// API to get now playing movies from TMDB API
 export const getNowPlayingMovies = asyncHandler(async (req, res) => {
     const { data } = await axios.get('https://api.themoviedb.org/3/movie/now_playing', {
         headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` }
@@ -19,7 +24,6 @@ export const getNowPlayingMovies = asyncHandler(async (req, res) => {
 });
 
 
-// API to add a new show to the database
 export const addShow = asyncHandler(async (req, res) => {
     const { movieId, screenId, showsInput, showPrice } = req.body;
 
@@ -30,12 +34,14 @@ export const addShow = asyncHandler(async (req, res) => {
         throw new AppError('showPrice must be a positive number', 400, 'INVALID_INPUT');
     }
 
-    const screen = await Screen.findById(screenId);
+    const screen = await Screen.findById(screenId).populate('theater');
     if (!screen) {
         throw new AppError('Screen not found', 404, 'SCREEN_NOT_FOUND');
     }
 
     assertScreenBelongsToTheater(screen, req.adminContext);
+
+    const theaterTimezone = screen.theater.timezone;
 
     let movie = await Movie.findById(movieId);
 
@@ -87,8 +93,12 @@ export const addShow = asyncHandler(async (req, res) => {
         }
 
         timeArray.forEach((time) => {
-            const dateTimeString = `${showDate}T${time}+05:30`;
-            const showDateTime = new Date(dateTimeString);
+            const showDateTime = DateTime.fromISO(`${showDate}T${time}`, { zone: theaterTimezone }).toJSDate();
+
+            if (Number.isNaN(showDateTime.getTime())) {
+                req.log.warn({ showDate, time, theaterTimezone }, 'Invalid show date/time, skipping');
+                return;
+            }
 
             showsToCreate.push({
                 movie: movieId,
@@ -104,7 +114,6 @@ export const addShow = asyncHandler(async (req, res) => {
         await Show.insertMany(showsToCreate);
     }
 
-    //Trigger inngest event
     await inngest.send({
         name: 'app/show.added',
         data: {movieTitle: movie.title}
@@ -115,7 +124,6 @@ export const addShow = asyncHandler(async (req, res) => {
 });
 
 
-// API to get all shows from the database, optionally filtered to a single theater
 export const getShows = asyncHandler(async (req, res) => {
     const { theaterId } = req.query;
 
@@ -124,7 +132,7 @@ export const getShows = asyncHandler(async (req, res) => {
     }
 
     const pipeline = [
-        { $match: { showDateTime: { $gte: new Date() } } },
+        { $match: { showDateTime: { $gte: new Date() }, isCancelled: { $ne: true } } },
     ];
 
     if (theaterId) {
@@ -135,8 +143,6 @@ export const getShows = asyncHandler(async (req, res) => {
         );
     }
 
-    // Earliest upcoming showDateTime per movie, so results can be sorted without
-    // fetching every show document (there are many shows per movie).
     pipeline.push(
         { $group: { _id: '$movie', earliestShow: { $min: '$showDateTime' } } },
         { $sort: { earliestShow: 1 } }
@@ -155,7 +161,6 @@ export const getShows = asyncHandler(async (req, res) => {
 });
 
 
-// API to get a single show from the databse, optionally filtered to a single theater
 export const getShow = asyncHandler(async (req, res) => {
     const { movieId } = req.params;
     const { theaterId } = req.query;
@@ -164,10 +169,7 @@ export const getShow = asyncHandler(async (req, res) => {
         throw new AppError('Invalid theaterId', 400, 'INVALID_INPUT');
     }
 
-    // Filter by theater in the query itself (via a screen lookup) instead of
-    // fetching every upcoming show for this movie across all theaters and
-    // discarding most in JS — a movie can play at dozens of theaters at once.
-    const match = { movie: movieId, showDateTime: { $gte: new Date() } };
+    const match = { movie: movieId, showDateTime: { $gte: new Date() }, isCancelled: { $ne: true } };
 
     const pipeline = [
         { $match: match },
@@ -195,4 +197,103 @@ export const getShow = asyncHandler(async (req, res) => {
     });
 
     res.json({ success: true, movie, dateTime })
+});
+
+
+const loadShowForAdmin = async (showId, adminContext) => {
+    if (!mongoose.Types.ObjectId.isValid(showId)) {
+        throw new AppError('Invalid showId', 400, 'INVALID_INPUT');
+    }
+
+    const show = await Show.findById(showId).populate('screen');
+    if (!show) {
+        throw new AppError('Show not found', 404, 'SHOW_NOT_FOUND');
+    }
+
+    assertScreenBelongsToTheater(show.screen, adminContext);
+    return show;
+};
+
+const invalidatePendingBookings = async (show, movieTitle) => {
+    const pendingBookings = await Booking.find({ show: show._id.toString(), isPaid: false });
+    if (pendingBookings.length === 0) return;
+
+    const seatsToRelease = pendingBookings.flatMap(b => b.bookedSeats);
+    await releaseSeatsAtomic(show._id, seatsToRelease);
+
+    await Booking.deleteMany({ _id: { $in: pendingBookings.map(b => b._id) } });
+
+    const userIds = [...new Set(pendingBookings.map(b => b.user))];
+    const users = await User.find({ _id: { $in: userIds } }).select('name email');
+
+    await Promise.allSettled(users.map(user => sendEmail({
+        to: user.email,
+        subject: `Your pending booking for "${movieTitle}" was cancelled`,
+        body: renderEmail({
+            greetingName: user.name,
+            bodyHtml: `
+                <p>The showtime for ${highlight(`"${movieTitle}"`)} you had reserved seats for has changed.</p>
+                <p>Your pending (unpaid) seat reservation has been released. Please book again if you're still interested.</p>
+            `,
+            closingLine: 'Sorry for the inconvenience!',
+        }),
+    })));
+};
+
+export const editShow = asyncHandler(async (req, res) => {
+    const { showId } = req.params;
+    const { showDateTime, showPrice } = req.body;
+
+    if (showDateTime === undefined && showPrice === undefined) {
+        throw new AppError('showDateTime and/or showPrice are required', 400, 'INVALID_INPUT');
+    }
+    if (showPrice !== undefined && (typeof showPrice !== 'number' || !Number.isFinite(showPrice) || showPrice <= 0)) {
+        throw new AppError('showPrice must be a positive number', 400, 'INVALID_INPUT');
+    }
+    let parsedDateTime;
+    if (showDateTime !== undefined) {
+        parsedDateTime = new Date(showDateTime);
+        if (Number.isNaN(parsedDateTime.getTime())) {
+            throw new AppError('showDateTime is not a valid date', 400, 'INVALID_INPUT');
+        }
+    }
+
+    const show = await loadShowForAdmin(showId, req.adminContext);
+
+    const timeIsChanging = parsedDateTime && parsedDateTime.getTime() !== show.showDateTime.getTime();
+    if (timeIsChanging && await hasPaidBookings(show._id)) {
+        throw new AppError('Cannot change the showtime of a show with paid bookings; cancel those bookings first', 409, 'SHOW_HAS_PAID_BOOKINGS');
+    }
+
+    if (showPrice !== undefined) show.showPrice = showPrice;
+    if (parsedDateTime) show.showDateTime = parsedDateTime;
+    await show.save();
+
+    if (timeIsChanging) {
+        const movie = await Movie.findById(show.movie);
+        await invalidatePendingBookings(show, movie?.title ?? 'your movie');
+    }
+
+    req.log.info({ showId }, 'Show updated');
+    res.json({ success: true, message: 'Show updated successfully', show });
+});
+
+
+export const deleteShow = asyncHandler(async (req, res) => {
+    const { showId } = req.params;
+
+    const show = await loadShowForAdmin(showId, req.adminContext);
+
+    if (await hasPaidBookings(show._id)) {
+        throw new AppError('Cannot delete a show with paid bookings; cancel those bookings first', 409, 'SHOW_HAS_PAID_BOOKINGS');
+    }
+
+    const movie = await Movie.findById(show.movie);
+    await invalidatePendingBookings(show, movie?.title ?? 'your movie');
+
+    show.isCancelled = true;
+    await show.save();
+
+    req.log.info({ showId }, 'Show cancelled');
+    res.json({ success: true, message: 'Show cancelled successfully' });
 });
