@@ -33,8 +33,6 @@ const createTestMovie = async () => Movie.create({
     runtime: 100,
 });
 
-// Bypasses Mongoose's required-field validation to insert shows the way they
-// would have existed before Show.screen was introduced.
 const insertLegacyShow = async (movieId, occupiedSeats = {}) => {
     const result = await Show.collection.insertOne({
         movie: movieId,
@@ -49,7 +47,7 @@ describe('migrateShowsToScreen', () => {
     it('is a no-op when every show already has a screen', async () => {
         const movie = await createTestMovie();
         const theater = await Theater.create({
-            name: 'T', slug: 't-c', city: 'C', address: 'A',
+            name: 'T', slug: 't-c', city: 'C', address: 'A', timezone: 'Asia/Kolkata',
             geolocation: { lat: 0, lng: 0 }, contactEmail: 'a@example.com',
         });
         const screen = await Screen.create({

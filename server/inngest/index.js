@@ -4,11 +4,14 @@ import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
 import sendEmail from "../configs/nodeMailer.js";
 import { logger } from "../configs/logger.js";
+import { buildBookingIcs } from "../utils/calendarEvent.js";
+import { formatInZone } from "../utils/timezone.js";
+import { SCREEN_WITH_THEATER } from "../utils/theaterScope.js";
+import { releaseSeatsAtomic } from "../utils/seatOperations.js";
+import { renderEmail, highlight } from "../utils/emailTemplate.js";
 
-// Create a client to send and receive events
 export const inngest = new Inngest({ id: "movie-ticket-booking" });
 
-//Inngest functionn to save user data to a database
 const syncUserCreation = inngest.createFunction(
   { id: 'sync-user-from-clerk' },
   { event: 'clerk/user.created' },
@@ -25,7 +28,6 @@ const syncUserCreation = inngest.createFunction(
 )
 
 
-//Inngest functionn to delete user data to a database
 const syncUserDeletion = inngest.createFunction(
   { id: 'delete-user-from-clerk' },
   { event: 'clerk/user.deleted' },
@@ -36,7 +38,6 @@ const syncUserDeletion = inngest.createFunction(
 )
 
 
-//Inngest functionn to update user data to a database
 const syncUserUpdation = inngest.createFunction(
   { id: 'update-user-from-clerk' },
   { event: 'clerk/user.updated' },
@@ -52,7 +53,6 @@ const syncUserUpdation = inngest.createFunction(
   }
 )
 
-//inngest functions to cancel booking and release seats of show after 10 minutes of booking created if payment is not made
 const releaseSeatsAndDeleteBooking = inngest.createFunction(
   { id: 'release-seats-date-booking' },
   { event: 'app/checkpayment' },
@@ -64,14 +64,8 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
       const bookingId = event.data.bookingId;
       const booking = await Booking.findById(bookingId)
 
-      //if payment is not made , release seats and delete booking
       if (!booking.isPaid) {
-        const show = await Show.findById(booking.show);
-        booking.bookedSeats.forEach((seat) => {
-          delete show.occupiedSeats[seat];
-        });
-        show.markModified('occupiedSeats');
-        await show.save();
+        await releaseSeatsAtomic(booking.show, booking.bookedSeats);
         await Booking.findByIdAndDelete(booking._id)
         logger.info({ bookingId }, 'Unpaid booking expired, seats released');
       }
@@ -79,7 +73,6 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
   }
 )
 
-// inngest function to send email when user books a show
 const sendBookingConfirmationEmail = inngest.createFunction(
   { id: 'send-booking-confirmation-email' },
   { event: 'app/show.booked' },
@@ -88,41 +81,59 @@ const sendBookingConfirmationEmail = inngest.createFunction(
 
     const booking = await Booking.findById(bookingId).populate({
       path: "show",
-      populate: { path: "movie", model: "Movie" }
+      populate: [
+        { path: "movie", model: "Movie" },
+        SCREEN_WITH_THEATER,
+      ]
     }).populate("user");
+
+    const icsContent = buildBookingIcs({
+      movieTitle: booking.show.movie.title,
+      runtimeMinutes: booking.show.movie.runtime,
+      showDateTime: booking.show.showDateTime,
+      theater: booking.show.screen?.theater,
+      bookingId: booking._id.toString(),
+    });
+
+    const { date: showDate, time: showTime } = formatInZone(booking.show.showDateTime, booking.show.screen?.theater?.timezone);
 
     await sendEmail({
       to: booking.user.email,
       subject: `Payment Confirmation: "${booking.show.movie.title}" booked!`,
-      body: ` <div style='font-family: Arial, sans-serif; line-height: 1.5;'>
-                <h2>Hi ${booking.user.name},</h2>
-                <p>Your booking for <strong style='color:#F84565;'> "${booking.show.movie.title}"</strong> is confirmed.</p>
-                <p>
-                  <strong>Date:</strong> ${new Date(booking.show.showDateTime).toLocaleDateString('en-US' , {timeZone: 'Asia/Kolkata'})}<br>
-                  <strong>Time:</strong> ${new Date(booking.show.showDateTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata'})}
-                </p>
-                <p>Enjoy the show! 🍿</p>
-                <p>Thanks for booking with us! <br/> — MovieTix Team</p>
-              </div> `
+      body: renderEmail({
+        greetingName: booking.user.name,
+        bodyHtml: `
+          <p>Your booking for ${highlight(`"${booking.show.movie.title}"`)} is confirmed.</p>
+          <p>
+            <strong>Date:</strong> ${showDate}<br>
+            <strong>Time:</strong> ${showTime}
+          </p>
+          <p>An "Add to Calendar" invite (.ics) is attached to this email.</p>
+        `,
+        closingLine: 'Thanks for booking with us! 🍿',
+      }),
+      attachments: [{
+        filename: `${booking.show.movie.title.replace(/[^a-z0-9]/gi, '_')}.ics`,
+        content: icsContent,
+        contentType: 'text/calendar',
+      }],
     })
   }
 )
 
 
-//Inngest function to send reminders
 const sendShowReminders = inngest.createFunction(
   {id: 'send-show-reminders'},
-  {cron: '0 */8 * * *'}, // Every 8 hours
+  {cron: '0 */8 * * *'},
   async ({ step }) => {
     const now = new Date();
     const in8Hours = new Date(now.getTime() + 8 * 60 * 60 * 1000);
     const windowStart = new Date(in8Hours.getTime() - 10 * 60 * 1000);
 
-    //prepare reminder emails
     const reminderTasks = await step.run('prepare-reminder-tasks', async () => {
       const shows = await Show.find({
         showDateTime: {$gte: windowStart, $lte: in8Hours},
-      }).populate('movie');
+      }).populate('movie').populate(SCREEN_WITH_THEATER);
 
       const tasks = [];
 
@@ -142,6 +153,7 @@ const sendShowReminders = inngest.createFunction(
             userName: user.name,
             movieTitle: show.movie.title,
             showTime: show.showDateTime,
+            theaterTimezone: show.screen?.theater?.timezone,
           })
         }
       }
@@ -152,27 +164,23 @@ const sendShowReminders = inngest.createFunction(
       return {sent: 0 , message: 'No reminders to send'};
     }
 
-    //send reminder emails
     const results = await step.run('send-all-reminders', async () => {
       return await Promise.allSettled(
-        reminderTasks.map(task => sendEmail({
-          to: task.userEmail,
-          subject: `Reminder: Your movie "${task.movieTitle}"  starts soon!`,
-          body: ` <div style='font-family: Arial, sans-serif; padding: 20px;'>
-                <h2>Hi ${task.userName},</h2>
-                <p>This is a quick reminder that your movie:</p>
-                <h3 style='color: #F84565;'>"${task.movieTitle}"</h3>
-                <p>
-                  is scheduled for
-                  <strong>${new Date(task.showTime).toLocaleDateString('en-US' , {timeZone: 'Asia/Kolkata'})}</strong>
-                  at
-                  <strong>${new Date(task.showTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata'})}</strong>
-                </p>
-                <p>It starts in approximately <strong>8 hours</strong> make sure you're ready!</p>
-                <br/>
-                <p>Enjoy the show! <br/> — MovieTix Team</p>
-              </div> `
-        }))
+        reminderTasks.map(task => {
+          const { date: showDate, time: showTime } = formatInZone(task.showTime, task.theaterTimezone);
+          return sendEmail({
+            to: task.userEmail,
+            subject: `Reminder: Your movie "${task.movieTitle}"  starts soon!`,
+            body: renderEmail({
+              greetingName: task.userName,
+              bodyHtml: `
+                <p>This is a quick reminder that your movie ${highlight(`"${task.movieTitle}"`)} is scheduled for
+                  <strong>${showDate}</strong> at <strong>${showTime}</strong>.</p>
+                <p>It starts in approximately <strong>8 hours</strong> — make sure you're ready!</p>
+              `,
+            }),
+          });
+        })
       )
     })
 
@@ -194,7 +202,6 @@ const sendShowReminders = inngest.createFunction(
 )
 
 
-//inngest functions to send notificatiosn when a new show is added
 const sendNewShowNotification = inngest.createFunction(
   { id: 'send-new-show-notification' },
   { event: 'app/show.added' },
@@ -203,25 +210,18 @@ const sendNewShowNotification = inngest.createFunction(
     const users = await User.find({})
 
     for(const user of users) {
-      const userEmail = user.email;
-      const userName = user.name;
-
-      const subject = `New Show Added: "${movieTitle}"`;
-
-      const body = ` <div style='font-family: Arial, sans-serif; padding: 20px;'>
-                      <h2>Hi ${userName},</h2>
-                      <p>We are excited to inform you that a new show for the movie
-                      <strong style='color:#F84565;'> "${movieTitle}"</strong> has been added!</p>
-                      <p>Check it out now and book your tickets!</p>
-                      <br/>
-                      <p>Thanks for being a part of our community! <br/> — MovieTix Team</p>
-                    </div> `;
-
-                await sendEmail({
-                  to: userEmail,
-                  subject,
-                  body
-                })
+      await sendEmail({
+        to: user.email,
+        subject: `New Show Added: "${movieTitle}"`,
+        body: renderEmail({
+          greetingName: user.name,
+          bodyHtml: `
+            <p>We are excited to inform you that a new show for the movie ${highlight(`"${movieTitle}"`)} has been added!</p>
+            <p>Check it out now and book your tickets!</p>
+          `,
+          closingLine: 'Thanks for being a part of our community!',
+        }),
+      })
     }
 
     return { message: `Notification sent` }

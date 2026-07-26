@@ -1,6 +1,3 @@
-// Local-dev helper: inserts 15 sample theaters across 15 Indian cities so
-// multi-city flows can be tested.
-// Usage: node scripts/seedTheaters.js
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import Theater from '../models/Theater.js';
@@ -121,7 +118,7 @@ async function seed() {
     for (const theaterData of SEED_THEATERS) {
         const theater = await Theater.findOneAndUpdate(
             { name: theaterData.name, city: theaterData.city },
-            { ...theaterData, slug: slugify(`${theaterData.name}-${theaterData.city}`), isActive: true },
+            { ...theaterData, timezone: theaterData.timezone ?? 'Asia/Kolkata', slug: slugify(`${theaterData.name}-${theaterData.city}`), isActive: true },
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
         console.log(`Upserted theater: ${theater.name} (${theater.city})`);

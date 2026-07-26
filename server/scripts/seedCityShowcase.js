@@ -1,18 +1,17 @@
-// Local-dev helper: seeds a realistic multi-city catalog — 18 real Indian
-// cities, 4 real-chain theaters each, one screen per theater, and 8-10 movies
-// per theater (drawn from a pool of 20 real films) with varied showtimes.
-// Idempotent: safe to re-run — theaters/screens are upserted by name, and
-// each theater's shows are fully replaced (not appended) on every run.
-// Usage: node scripts/seedCityShowcase.js
 import 'dotenv/config';
 import mongoose from 'mongoose';
+import { DateTime } from 'luxon';
 import Movie from '../models/Movie.js';
 import Show from '../models/Show.js';
 import Theater from '../models/Theater.js';
 import Screen from '../models/Screen.js';
 import slugify from '../utils/slugify.js';
 
-// 20 real movies (real TMDB ids/poster paths), so theater catalogs look genuine.
+const DEFAULT_TIMEZONE = 'Asia/Kolkata';
+const CITY_TIMEZONES = {
+    'New York': 'America/New_York',
+};
+
 const MOVIE_POOL = [
     {
         _id: '27205', title: 'Inception',
@@ -196,8 +195,6 @@ const MOVIE_POOL = [
     },
 ];
 
-// 18 real Indian cities, each with 4 theaters using real multiplex chain
-// names and real area/mall names local to that city.
 const CITY_THEATERS = {
     Mumbai: [
         { name: 'PVR Icon', address: 'Infiniti Mall, Andheri West, Mumbai, MH' },
@@ -307,9 +304,14 @@ const CITY_THEATERS = {
         { name: 'Cinepolis Sixmile', address: 'Sixmile, Guwahati, AS' },
         { name: 'Anuradha Talkies Paltan Bazar', address: 'Paltan Bazar, Guwahati, AS' },
     ],
+    'New York': [
+        { name: 'AMC Empire 25', address: '234 W 42nd St, New York, NY' },
+        { name: 'Regal Union Square', address: '850 Broadway, New York, NY' },
+        { name: 'AMC Lincoln Square', address: '1998 Broadway, New York, NY' },
+        { name: 'Village East by Angelika', address: '181-189 2nd Ave, New York, NY' },
+    ],
 };
 
-// approximate city centers, so geolocation isn't identical for every theater in a city
 const CITY_COORDS = {
     Mumbai: [19.0760, 72.8777], Delhi: [28.6139, 77.2090], Bengaluru: [12.9716, 77.5946],
     Chennai: [13.0827, 80.2707], Hyderabad: [17.3850, 78.4867], Kolkata: [22.5726, 88.3639],
@@ -317,14 +319,13 @@ const CITY_COORDS = {
     Lucknow: [26.8467, 80.9462], Chandigarh: [30.7333, 76.7794], Kochi: [9.9312, 76.2673],
     Indore: [22.7196, 75.8577], Bathinda: [30.2110, 74.9455], Nagpur: [21.1458, 79.0882],
     Surat: [21.1702, 72.8311], Coimbatore: [11.0168, 76.9558], Guwahati: [26.1445, 91.7362],
+    'New York': [40.7128, -74.0060],
 };
 
 const SHOW_TIMES = ['10:00', '14:00', '18:30', '21:45'];
 const DAYS_AHEAD = 7;
 const SHOW_PRICE_RANGE = [180, 320];
 
-// Deterministic pseudo-random so re-running the script produces the same
-// catalog (idempotent output), seeded per-theater.
 function seededRandom(seedStr) {
     let seed = 0;
     for (let i = 0; i < seedStr.length; i++) seed = (seed * 31 + seedStr.charCodeAt(i)) >>> 0;
@@ -373,6 +374,7 @@ async function seed() {
 
     for (const [city, theaters] of Object.entries(CITY_THEATERS)) {
         const [baseLat, baseLng] = CITY_COORDS[city] || [0, 0];
+        const cityTimezone = CITY_TIMEZONES[city] || DEFAULT_TIMEZONE;
 
         for (let i = 0; i < theaters.length; i++) {
             const { name, address } = theaters[i];
@@ -385,7 +387,7 @@ async function seed() {
                     slug: slugify(`${name}-${city}`),
                     city,
                     address,
-                    // small deterministic offset per theater so they don't all sit on the exact same point
+                    timezone: cityTimezone,
                     geolocation: { lat: baseLat + (i * 0.01), lng: baseLng + (i * 0.01) },
                     contactEmail: `${slugify(name)}@example.com`,
                     isActive: true,
@@ -396,10 +398,9 @@ async function seed() {
 
             const screen = await ensureScreen(theater);
 
-            const movieCount = 8 + Math.floor(rand() * 3); // 8-10 movies per theater
+            const movieCount = 8 + Math.floor(rand() * 3);
             const moviesForTheater = pickMovies(rand, movieCount);
 
-            // re-running the script fully replaces this theater's shows, so it stays idempotent
             const theaterScreenIds = [screen._id];
             await Show.deleteMany({ screen: { $in: theaterScreenIds } });
 
@@ -412,7 +413,6 @@ async function seed() {
                     date.setDate(date.getDate() + dayOffset);
                     const dateStr = date.toISOString().split('T')[0];
 
-                    // each movie plays 2 of the 4 daily slots at this theater, varied by movie
                     const startSlot = Math.floor(rand() * (SHOW_TIMES.length - 1));
                     const timesForMovie = [SHOW_TIMES[startSlot], SHOW_TIMES[(startSlot + 2) % SHOW_TIMES.length]];
 
@@ -420,7 +420,7 @@ async function seed() {
                         showsToCreate.push({
                             movie: movie._id,
                             screen: screen._id,
-                            showDateTime: new Date(`${dateStr}T${time}:00+05:30`),
+                            showDateTime: DateTime.fromISO(`${dateStr}T${time}`, { zone: cityTimezone }).toJSDate(),
                             showPrice,
                             occupiedSeats: {},
                         });

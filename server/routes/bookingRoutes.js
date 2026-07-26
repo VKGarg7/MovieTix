@@ -1,5 +1,5 @@
 import express from 'express';
-import { createBooking, getBookingStatus, getOccupiedSeats } from '../controllers/bookingController.js';
+import { createBooking, getBookingStatus, getOccupiedSeats, cancelBooking, getBookingCalendar } from '../controllers/bookingController.js';
 import { protectUser } from '../middleware/auth.js';
 import { seatPollingLimiter } from '../middleware/rateLimit.js';
 
@@ -107,5 +107,70 @@ bookingRouter.get('/seats/:showId', seatPollingLimiter, getOccupiedSeats);
  *         $ref: '#/components/responses/ServerError'
  */
 bookingRouter.get('/status/:bookingId', protectUser, getBookingStatus);
+
+/**
+ * @openapi
+ * /booking/cancel/{bookingId}:
+ *   post:
+ *     summary: Cancel a paid booking, refund via Stripe, and release the seats
+ *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: signed-in user (must own the booking). Must be at least the theater's cancellation cutoff (default 2 hours) before the showtime."
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Booking cancelled and refund initiated
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Booking cancelled and refund initiated"
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         $ref: '#/components/responses/Conflict'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+bookingRouter.post('/cancel/:bookingId', protectUser, cancelBooking);
+
+/**
+ * @openapi
+ * /booking/calendar/{bookingId}:
+ *   get:
+ *     summary: Download an .ics calendar event for a paid booking
+ *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: signed-in user (must own the booking). Only available for paid bookings. Event start/end are computed from the show's showDateTime and the movie's runtime (falls back to 2 hours if runtime is missing)."
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: .ics file
+ *         content:
+ *           text/calendar: {}
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+bookingRouter.get('/calendar/:bookingId', protectUser, getBookingCalendar);
 
 export default bookingRouter;

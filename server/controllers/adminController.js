@@ -4,19 +4,15 @@ import User from '../models/User.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { getScreenIdsForTheater, getShowIdsForTheater } from '../utils/theaterScope.js';
 
-// API to check if user is admin, and which role they hold
 export const isAdmin = (req, res) => {
     res.json({ success: true, isAdmin: true, role: req.adminContext.role })
 }
 
-// Shows a preview of this many upcoming shows on the dashboard; the stat
-// card's count comes from a separate countDocuments, not this array's length.
 const DASHBOARD_ACTIVE_SHOWS_PREVIEW_LIMIT = 12;
 
-// API to get dashboard data
 export const getDashboardData = asyncHandler(async (req, res) => {
     const { role, theaterId } = req.adminContext;
-    const showFilter = { showDateTime: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } };
+    const showFilter = { showDateTime: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }, isCancelled: { $ne: true } };
     const bookingFilter = { isPaid: true };
 
     if (role === 'theaterAdmin') {
@@ -24,9 +20,6 @@ export const getDashboardData = asyncHandler(async (req, res) => {
         bookingFilter.show = { $in: await getShowIdsForTheater(theaterId) };
     }
 
-    // Sum/count via aggregation instead of fetching every Booking/Show document
-    // just to read .length or reduce over .amount — this scales independently
-    // of how many bookings/shows exist.
     const [bookingStats] = await Booking.aggregate([
         { $match: bookingFilter },
         { $group: { _id: null, totalBookings: { $sum: 1 }, totalRevenue: { $sum: '$amount' } } },
@@ -38,8 +31,6 @@ export const getDashboardData = asyncHandler(async (req, res) => {
         .limit(DASHBOARD_ACTIVE_SHOWS_PREVIEW_LIMIT)
         .populate('movie');
 
-    // Theater-scoped totalUser has no clean definition yet (users aren't
-    // theater-scoped), so only super-admins get a real platform-wide count.
     const totalUser = role === 'superAdmin' ? await User.countDocuments() : null;
 
     const dashboardData = {
@@ -55,7 +46,6 @@ export const getDashboardData = asyncHandler(async (req, res) => {
 
 
 
-// API to get all shows (scoped to the caller's theater unless super-admin)
 export const getAllShows = asyncHandler(async (req, res) => {
     const { role, theaterId } = req.adminContext;
     const filter = { showDateTime: { $gte: new Date() } };
@@ -69,7 +59,6 @@ export const getAllShows = asyncHandler(async (req, res) => {
 });
 
 
-// API to get all bookings (scoped to the caller's theater unless super-admin)
 export const getAllBookings = asyncHandler(async (req, res) => {
     const { role, theaterId } = req.adminContext;
     const filter = { isPaid: true };
