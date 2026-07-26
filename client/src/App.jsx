@@ -1,13 +1,15 @@
-import React from 'react'
+import React, { useState } from 'react'
 import Navbar from './components/Navbar'
+import CityTheaterModal from './components/CityTheaterModal'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import Movies from './pages/Movies'
 import MovieDetails from './pages/MovieDetails'
 import SeatLayout from './pages/SeatLayout'
 import MyBookings from './pages/MyBookings'
-import Favourite from './pages/Favourite' 
-import {Toaster} from 'react-hot-toast' 
+import Favourite from './pages/Favourite'
+import Theaters from './pages/Theaters'
+import {Toaster} from 'react-hot-toast'
 import Footer from './components/Footer'
 import Layout from './pages/admin/Layout'
 import Dashboard from './pages/admin/Dashboard'
@@ -22,12 +24,19 @@ const App = () => {
 
   const isAdminRoute = useLocation().pathname.startsWith('/admin')
 
-  const {user} = useAppContext()
+  const {user, selectedTheater} = useAppContext()
+  const [isCityModalOpen, setIsCityModalOpen] = useState(false)
 
   return (
     <>
       <Toaster />
-      {!isAdminRoute && <Navbar/>} 
+      {!isAdminRoute && !selectedTheater && (
+        <CityTheaterModal onClose={() => {}} dismissible={false} />
+      )}
+      {!isAdminRoute && isCityModalOpen && (
+        <CityTheaterModal onClose={() => setIsCityModalOpen(false)} />
+      )}
+      {!isAdminRoute && <Navbar onChangeLocation={() => setIsCityModalOpen(true)} />}
       <Routes>
         <Route path='/' element={<Home/>} />
         <Route path='/movies' element={<Movies/>} />
@@ -37,6 +46,7 @@ const App = () => {
         <Route path='/loading/:nextUrl' element={<Loading/>} />
         
         <Route path='/favourite' element={<Favourite/>} />
+        <Route path='/theaters' element={<Theaters/>} />
 
         <Route path='/admin/*' element={user ? <Layout/> : (
           <div className='min-h-screen flex justify-center items-center'>

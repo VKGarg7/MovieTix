@@ -14,16 +14,12 @@ const MovieDetails = () => {
   const { id } = useParams();
   const [show, setShow] = useState(null);
 
-  const {shows , axios , getToken , user , fetchFavoriteMovies , favoriteMovies , image_base_url} = useAppContext();
+  const {shows , axios , getToken , user , fetchFavoriteMovies , favoriteMovies , image_base_url , selectedTheater , fetchShowDetails} = useAppContext();
 
   const getShow = async () => {
-    try {
-      const {data} = await axios.get(`/api/show/${id}`);
-      if(data.success){
-        setShow(data)
-      }
-    } catch (error) {
-      console.log(error);
+    const data = await fetchShowDetails(id, selectedTheater?._id);
+    if (data) {
+      setShow(data);
     }
   };
 
@@ -45,9 +41,9 @@ const MovieDetails = () => {
 
   useEffect(() => {
     getShow();
-    // only re-run when the movie id changes, not on every render
+    // re-run when the movie id or selected theater changes, not on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, selectedTheater]);
 
   return show ? (
     <div className="px-6 md:px-16 lg:px-40 pt-30 md:pt-50">

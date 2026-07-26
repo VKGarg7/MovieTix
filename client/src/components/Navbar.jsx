@@ -1,17 +1,17 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { assets } from "../assets/assets";
-import { MenuIcon, SearchIcon, TicketPlus , XIcon } from "lucide-react";
+import { MenuIcon, SearchIcon, TicketPlus , XIcon, MapPinIcon } from "lucide-react";
 import { useClerk, UserButton, useUser } from "@clerk/clerk-react";
 import { useAppContext } from "../context/useAppContext";
 
-const Navbar = () => {
+const Navbar = ({ onChangeLocation }) => {
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useUser()
   const { openSignIn } = useClerk()
   const navigate = useNavigate()
 
-  const {favoriteMovies} = useAppContext(); 
+  const {favoriteMovies, selectedCity, selectedTheater} = useAppContext();
 
   return (
     <div className="fixed top-0 left-0 z-50 w-full flex items-center justify-between px-6 md:px-16 lg:px-36 py-5">
@@ -25,12 +25,22 @@ const Navbar = () => {
 
         <Link onClick={() => { scrollTo(0, 0); setIsOpen(false) }} to="/">Home</Link>
         <Link onClick={() => { scrollTo(0, 0); setIsOpen(false) }} to="/movies">Movies</Link>
-        <Link onClick={() => { scrollTo(0, 0); setIsOpen(false) }} to="/">Theaters</Link>
-        <Link onClick={() => { scrollTo(0, 0); setIsOpen(false) }} to="/">Releases</Link>
+        <Link onClick={() => { scrollTo(0, 0); setIsOpen(false) }} to="/theaters">Theaters</Link>
         {favoriteMovies.length > 0 &&<Link onClick={() => { scrollTo(0, 0); setIsOpen(false) }} to="/favourite">Favourites</Link>}
       </div>
 
       <div className="flex items-center gap-8">
+        <button
+          onClick={onChangeLocation}
+          className="flex items-center gap-1 text-sm text-gray-300 hover:text-white cursor-pointer max-w-40 truncate"
+          title="Change city/theater"
+        >
+          <MapPinIcon className="w-4 h-4 shrink-0" />
+          <span className="truncate">
+            {selectedTheater ? selectedTheater.name : selectedCity || "Select city"}
+          </span>
+        </button>
+
         <SearchIcon className="max-md:hidden w-6 h-6 cursor-pointer" />
         {
           !user ? (

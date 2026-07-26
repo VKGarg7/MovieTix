@@ -3,39 +3,35 @@ import { assets } from "../assets/assets";
 import { useParams } from "react-router-dom";
 import Loading from "../components/Loading";
 import isoTimeFormat from "../lib/isoTimeFormat";
-import { ArrowRightIcon, ClockIcon } from "lucide-react";
+import { ArrowRightIcon, ClockIcon, Star, Sofa, Accessibility } from "lucide-react";
 import BlurCircle from "../components/BlurCircle";
 import { toast } from "react-hot-toast";
 import { useAppContext } from "../context/useAppContext";
 
-const SeatLayout = () => {
-  const groupRows = [
-    ["A", "B"],
-    ["C", "D"],
-    ["E", "F"],
-    ["G", "H"],
-    ["I", "J"],
-  ];
+const SEAT_TYPE_META = {
+  regular: { label: "Regular", border: "border-primary/60", icon: null },
+  premium: { label: "Premium", border: "border-amber-400/80", icon: Star },
+  recliner: { label: "Recliner", border: "border-purple-400/80", icon: Sofa },
+  accessible: { label: "Accessible", border: "border-sky-400/80", icon: Accessibility },
+};
 
+const getSeatTypeMeta = (seatType) => SEAT_TYPE_META[seatType] || SEAT_TYPE_META.regular;
+
+const SeatLayout = () => {
   const { id, date } = useParams();
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [selectedTime, setSelectedTime] = useState(null);
   const [show, setShow] = useState(null);
   const [occupiedSeats, setOccupiedSeats] = useState([]);
 
-  const {axios , getToken , user} = useAppContext();
+  const {axios , getToken , user , selectedTheater , fetchShowDetails} = useAppContext();
 
   // const navigate = useNavigate();
 
   const getShow = async () => {
-    try {
-      const {data} = await axios.get(`/api/show/${id}`)
-      if(data.success){
-        setShow(data)
-      }
-      
-    } catch (error) {
-      console.log(error);
+    const data = await fetchShowDetails(id, selectedTheater?._id);
+    if (data) {
+      setShow(data);
     }
   };
 
@@ -56,21 +52,31 @@ const SeatLayout = () => {
     );
   };
 
-  const renderSeats = (row, count = 9) => {
+  const renderSeats = (rowLabel, seatCount, seatType = "regular") => {
+    const { label, border, icon: SeatIcon } = getSeatTypeMeta(seatType);
+
     return (
-      <div key={row} className="flex gap-2 mt-2">
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {Array.from({ length: count }, (_, i) => {
-            const seatId = `${row}${i + 1}`;
+      <div key={rowLabel} className="flex items-center gap-3 mt-2">
+        <span className="w-4 shrink-0 text-gray-500">{rowLabel}</span>
+        <div className="flex flex-nowrap items-center gap-2">
+          {Array.from({ length: seatCount }, (_, i) => {
+            const seatId = `${rowLabel}${i + 1}`;
+            const isSelected = selectedSeats.includes(seatId);
+            const isOccupied = occupiedSeats.includes(seatId);
             return (
               <button
                 key={seatId}
                 onClick={() => handleSeatClick(seatId)}
-                className={`h-8 w-8 rounded border border-primary/60 cursor-pointer 
-              ${selectedSeats.includes(seatId) && "bg-primary text-white"} 
-              ${occupiedSeats.includes(seatId) && "opacity-50"}`}
+                title={`${seatId} — ${label}`}
+                className={`relative h-8 w-8 shrink-0 rounded border cursor-pointer flex items-center justify-center text-[10px]
+              ${border}
+              ${isSelected ? "bg-primary text-white" : ""}
+              ${isOccupied ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 {seatId}
+                {SeatIcon && (
+                  <SeatIcon className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-[#1f1f24] rounded-full p-0.5 box-content" />
+                )}
               </button>
             );
           })}
@@ -159,15 +165,24 @@ const SeatLayout = () => {
         <img src={assets.screenImage} alt="screen" />
         <p className="text-gray-400 text-sm mb-6">SCREEN SIDE</p>
 
-        <div className="flex flex-col items-center mt-10 text-xs text-gray-300">
-          <div className="grid grid-cols-2 md:grid-cols-1 gap-8 md:gap-2 mb-6">
-            {groupRows[0].map((row) => renderSeats(row))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-11">
-            {groupRows.slice(1).map((group, idx) => (
-              <div key={idx}>{group.map((row) => renderSeats(row))}</div>
+        {selectedTime?.screen?.rows?.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mt-6 text-[11px] text-gray-400">
+            {Object.entries(SEAT_TYPE_META).map(([type, { label, border, icon: SeatIcon }]) => (
+              <div key={type} className="flex items-center gap-1.5">
+                <span className={`relative h-4 w-4 rounded border ${border}`}>
+                  {SeatIcon && <SeatIcon className="absolute inset-0 m-auto w-2.5 h-2.5" />}
+                </span>
+                {label}
+              </div>
             ))}
+          </div>
+        )}
+
+        <div className="w-full max-w-full overflow-x-auto">
+          <div className="flex flex-col items-center mt-10 text-xs text-gray-300 gap-1 max-h-[60vh] overflow-y-auto py-1 w-max mx-auto">
+            {(selectedTime?.screen?.rows || []).map((row) =>
+              renderSeats(row.label, row.seatCount, row.seatType)
+            )}
           </div>
         </div>
 

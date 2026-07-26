@@ -39,7 +39,9 @@ showRouter.get('/now-playing', protectAdmin , getNowPlayingMovies)
  *     tags: [Show]
  *     security:
  *       - bearerAuth: []
- *     description: "Auth: admin only."
+ *     description: >
+ *       Auth: admin only. A theater-admin may only add shows to a screen belonging to
+ *       their own theater (403 otherwise); super-admins may target any screen.
  *     requestBody:
  *       required: true
  *       content:

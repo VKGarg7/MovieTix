@@ -12,15 +12,16 @@ const adminRouter = express.Router();
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
- *     description: "Auth: admin only. (protectAdmin already rejects non-admins with 403, so a 200 response always means true.)"
+ *     description: "Auth: admin only (super-admin or theater-admin). (protectAdmin already rejects non-admins with 403, so a 200 response always means true.)"
  *     responses:
  *       200:
- *         description: Confirmation of admin status
+ *         description: Confirmation of admin status, plus the caller's specific role
  *         content:
  *           application/json:
  *             example:
  *               success: true
  *               isAdmin: true
+ *               role: theaterAdmin
  *       401:
  *         $ref: '#/components/responses/Unauthenticated'
  *       403:
@@ -36,7 +37,10 @@ adminRouter.get('/is-admin', protectAdmin ,isAdmin);
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
- *     description: "Auth: admin only."
+ *     description: >
+ *       Auth: admin only. A theater-admin's totals are scoped to their own theater;
+ *       totalUser is only populated for super-admins (null otherwise, since users
+ *       aren't theater-scoped).
  *     responses:
  *       200:
  *         description: Dashboard data
@@ -66,7 +70,7 @@ adminRouter.get('/dashboard-data', protectAdmin , getDashboardData);
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
- *     description: "Auth: admin only."
+ *     description: "Auth: admin only. A theater-admin only sees shows at their own theater; super-admins see all."
  *     responses:
  *       200:
  *         description: Upcoming shows
@@ -92,7 +96,7 @@ adminRouter.get('/all-shows', protectAdmin ,getAllShows);
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
- *     description: "Auth: admin only."
+ *     description: "Auth: admin only. A theater-admin only sees bookings for shows at their own theater; super-admins see all."
  *     responses:
  *       200:
  *         description: Paid bookings

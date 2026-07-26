@@ -22,6 +22,7 @@ const Dashboard = () => {
   const [dashboardData, setDashboardData] = useState({
     totalBookings: 0,
     totalRevenue: 0,
+    activeShowsCount: 0,
     activeShows: [],
     totalUser: 0,
   });
@@ -40,7 +41,7 @@ const Dashboard = () => {
     },
     {
       title: "Active Shows",
-      value: dashboardData.activeShows.length || "0",
+      value: dashboardData.activeShowsCount || "0",
       icon: PlayCircleIcon,
     },
     {
