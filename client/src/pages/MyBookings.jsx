@@ -217,7 +217,7 @@ const MyBookings = () => {
                 <Countdown showDateTime={item.show.showDateTime} />
               )}
 
-              {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" &&
+              {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.show?.movie &&
                 <button
                   onClick={() => handleAddToCalendar(item)}
                   disabled={downloadingId === item._id}
