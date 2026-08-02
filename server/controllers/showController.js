@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import axios from 'axios';
 import { DateTime } from 'luxon';
 import Movie from '../models/Movie.js';
 import Show from '../models/Show.js';
@@ -13,14 +12,94 @@ import AppError from '../utils/AppError.js';
 import { assertScreenBelongsToTheater, hasPaidBookings } from '../utils/theaterScope.js';
 import { releaseSeatsAtomic } from '../utils/seatOperations.js';
 import { renderEmail, highlight } from '../utils/emailTemplate.js';
+import tmdb from '../utils/tmdbClient.js';
+import { bookableShowFilter, getBookableMovieIds } from '../utils/showQueries.js';
+import { getGenreNames } from '../utils/movieGenres.js';
 
 
 export const getNowPlayingMovies = asyncHandler(async (req, res) => {
-    const { data } = await axios.get('https://api.themoviedb.org/3/movie/now_playing', {
-        headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` }
-    })
+    const { data } = await tmdb.get('/movie/now_playing');
     const movies = data.results;
     res.json({ success: true, movies: movies })
+});
+
+
+export const searchMovies = asyncHandler(async (req, res) => {
+    const { query } = req.query;
+
+    if (!query || typeof query !== 'string' || query.trim().length < 2) {
+        return res.json({ success: true, movies: [] });
+    }
+
+    const trimmedQuery = query.trim();
+
+    const localMovies = await Movie.find(
+        { $text: { $search: trimmedQuery } },
+        { score: { $meta: 'textScore' } }
+    ).sort({ score: { $meta: 'textScore' } }).limit(20);
+
+    if (localMovies.length > 0) {
+        return res.json({ success: true, movies: localMovies, source: 'local' });
+    }
+
+    const { data } = await tmdb.get('/search/movie', { params: { query: trimmedQuery } });
+
+    res.json({ success: true, movies: data.results, source: 'tmdb' });
+});
+
+
+export const searchBookableMovies = asyncHandler(async (req, res) => {
+    const { query } = req.query;
+
+    if (!query || typeof query !== 'string' || query.trim().length < 2) {
+        return res.json({ success: true, movies: [], source: 'local' });
+    }
+
+    const trimmedQuery = query.trim();
+
+    const bookableMovieIds = await getBookableMovieIds();
+
+    const localMovies = await Movie.find(
+        { _id: { $in: bookableMovieIds }, $text: { $search: trimmedQuery } },
+        { score: { $meta: 'textScore' } }
+    ).sort({ score: { $meta: 'textScore' } }).limit(20);
+
+    if (localMovies.length > 0) {
+        return res.json({ success: true, movies: localMovies, source: 'local' });
+    }
+
+    const { data } = await tmdb.get('/search/movie', { params: { query: trimmedQuery } });
+
+    res.json({ success: true, movies: data.results, source: 'tmdb' });
+});
+
+
+const SIMILAR_MOVIES_LIMIT = 8;
+const MIN_SIMILAR_MOVIES = 2;
+
+export const getSimilarMovies = asyncHandler(async (req, res) => {
+    const { movieId } = req.params;
+
+    const movie = await Movie.findById(movieId);
+    if (!movie) {
+        throw new AppError('Movie not found', 404, 'MOVIE_NOT_FOUND');
+    }
+
+    const genreNames = getGenreNames(movie);
+    if (genreNames.length === 0) {
+        return res.json({ success: true, movies: [] });
+    }
+
+    const similarMovies = await Movie.find({
+        _id: { $ne: movieId },
+        genres: { $elemMatch: { name: { $in: genreNames } } },
+    }).limit(SIMILAR_MOVIES_LIMIT);
+
+    if (similarMovies.length < MIN_SIMILAR_MOVIES) {
+        return res.json({ success: true, movies: [] });
+    }
+
+    res.json({ success: true, movies: similarMovies });
 });
 
 
@@ -47,12 +126,8 @@ export const addShow = asyncHandler(async (req, res) => {
 
     if (!movie) {
         const [movieDetailsResponse, movieCreditsResponse] = await Promise.all([
-            axios.get(`https://api.themoviedb.org/3/movie/${movieId}`, {
-                headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` }
-            }),
-            axios.get(`https://api.themoviedb.org/3/movie/${movieId}/credits`, {
-                headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` }
-            })
+            tmdb.get(`/movie/${movieId}`),
+            tmdb.get(`/movie/${movieId}/credits`),
         ]);
 
         const movieApiData = movieDetailsResponse.data;
@@ -75,6 +150,8 @@ export const addShow = asyncHandler(async (req, res) => {
 
         movie = await Movie.create(movieDetails);
     }
+
+    const isFirstShowForMovie = !(await Show.exists({ movie: movieId }));
 
     const showsToCreate = [];
 
@@ -114,10 +191,12 @@ export const addShow = asyncHandler(async (req, res) => {
         await Show.insertMany(showsToCreate);
     }
 
-    await inngest.send({
-        name: 'app/show.added',
-        data: {movieTitle: movie.title}
-    })
+    if (isFirstShowForMovie && showsToCreate.length > 0) {
+        await inngest.send({
+            name: 'app/show.added',
+            data: { movieId: movie._id, movieTitle: movie.title }
+        })
+    }
 
     req.log.info({ movieId, showsCreated: showsToCreate.length }, 'Show added');
     res.json({ success: true, message: 'Show Added successfully.' });
@@ -132,7 +211,7 @@ export const getShows = asyncHandler(async (req, res) => {
     }
 
     const pipeline = [
-        { $match: { showDateTime: { $gte: new Date() }, isCancelled: { $ne: true } } },
+        { $match: bookableShowFilter() },
     ];
 
     if (theaterId) {

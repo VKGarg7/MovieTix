@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import Loading from '../../components/Loading';
 import Title from '../../components/admin/Title';
+import PaginationControls from '../../components/admin/PaginationControls';
 import { dateFormat } from "../../lib/dateFomat";
 import { useAppContext } from '../../context/useAppContext';
 
@@ -12,11 +13,17 @@ const ListBookings = () => {
 
   const [bookings , setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const getAllBookings = async () => {
+  const getAllBookings = async (targetPage) => {
     try {
-      const {data} = await axios.get("/api/admin/all-bookings", { headers: {Authorization: `Bearer ${await getToken()}` }});
+      const {data} = await axios.get("/api/admin/all-bookings", {
+        params: { page: targetPage },
+        headers: {Authorization: `Bearer ${await getToken()}` },
+      });
       setBookings(data.bookings);
+      setTotalPages(data.pageInfo?.totalPages || 1);
     } catch (error) {
       console.error(error);
     }
@@ -25,11 +32,11 @@ const ListBookings = () => {
 
   useEffect(() => {
     if(user){
-      getAllBookings();
+      getAllBookings(page);
     }
-    // only re-run when the user changes, not on every render
+    // only re-run when the user or page changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[user]);
+  },[user, page]);
 
   return !isLoading ? (
     <>
@@ -60,7 +67,9 @@ const ListBookings = () => {
         </tbody>
 
       </table>
-     </div> 
+     </div>
+
+     <PaginationControls page={page} totalPages={totalPages} onPageChange={setPage} />
     </>
   ) : <Loading />
 }

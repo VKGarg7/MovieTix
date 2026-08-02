@@ -71,6 +71,13 @@ adminRouter.get('/dashboard-data', protectAdmin , getDashboardData);
  *     security:
  *       - bearerAuth: []
  *     description: "Auth: admin only. A theater-admin only sees shows at their own theater; super-admins see all."
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, maximum: 100 }
  *     responses:
  *       200:
  *         description: Upcoming shows
@@ -79,6 +86,7 @@ adminRouter.get('/dashboard-data', protectAdmin , getDashboardData);
  *             example:
  *               success: true
  *               shows: [{ _id: "abc123", showDateTime: "2026-08-01T14:00:00+05:30", showPrice: 250 }]
+ *               pageInfo: { page: 1, limit: 20, total: 42, totalPages: 3 }
  *       401:
  *         $ref: '#/components/responses/Unauthenticated'
  *       403:
@@ -97,6 +105,13 @@ adminRouter.get('/all-shows', protectAdmin ,getAllShows);
  *     security:
  *       - bearerAuth: []
  *     description: "Auth: admin only. A theater-admin only sees bookings for shows at their own theater; super-admins see all."
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, maximum: 100 }
  *     responses:
  *       200:
  *         description: Paid bookings
@@ -105,6 +120,7 @@ adminRouter.get('/all-shows', protectAdmin ,getAllShows);
  *             example:
  *               success: true
  *               bookings: [{ _id: "def456", amount: 500, isPaid: true }]
+ *               pageInfo: { page: 1, limit: 20, total: 42, totalPages: 3 }
  *       401:
  *         $ref: '#/components/responses/Unauthenticated'
  *       403:

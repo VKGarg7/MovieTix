@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Loading from "../components/Loading";
 import BlurCircle from "../components/BlurCircle";
 import timeFormat from "../lib/timeFormat";
@@ -9,21 +9,6 @@ import toast from "react-hot-toast";
 
 const CANCELLATION_CUTOFF_HOURS = 2;
 const TABS = ["Upcoming", "Completed", "Cancelled"];
-
-// Bookings are grouped client-side from showDateTime + isPaid + status (no dedicated
-// endpoint needed): a cancelled/pending-cancellation booking is always "Cancelled",
-// a paid booking whose show hasn't started yet is "Upcoming", everything else
-// (past showtime, or unpaid/expired) falls into "Completed".
-const getCategory = (item) => {
-  if (item.status === "cancelled" || item.status === "pending-cancellation") {
-    return "Cancelled";
-  }
-  const showTime = item.show?.showDateTime ? new Date(item.show.showDateTime).getTime() : null;
-  if (item.isPaid && showTime && showTime > Date.now()) {
-    return "Upcoming";
-  }
-  return "Completed";
-};
 
 const formatCountdown = (ms) => {
   if (ms <= 0) return "Starting now";
@@ -64,14 +49,19 @@ const MyBookings = () => {
   const [cancellingId, setCancellingId] = useState(null);
   const [activeTab, setActiveTab] = useState("Upcoming");
   const [downloadingId, setDownloadingId] = useState(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [tabCounts, setTabCounts] = useState({ Upcoming: 0, Completed: 0, Cancelled: 0 });
 
-  const getMyBookings = async () => {
+  const getMyBookings = async (category, targetPage) => {
     try {
       const { data } = await axios.get("/api/user/bookings", {
+        params: { category, page: targetPage },
         headers: { Authorization: `Bearer ${await getToken()}` },
       });
       if (data.success) {
         setBookings(data.bookings);
+        setTotalPages(data.pageInfo?.totalPages || 1);
       }
     } catch (error) {
       console.log(error);
@@ -79,18 +69,43 @@ const MyBookings = () => {
     setIsLoading(false);
   };
 
+  const refreshTabCounts = async () => {
+    try {
+      const token = await getToken();
+      const results = await Promise.all(
+        TABS.map((tab) =>
+          axios.get("/api/user/bookings", {
+            params: { category: tab, page: 1, limit: 1 },
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        )
+      );
+      setTabCounts({
+        Upcoming: results[0].data.pageInfo?.total || 0,
+        Completed: results[1].data.pageInfo?.total || 0,
+        Cancelled: results[2].data.pageInfo?.total || 0,
+      });
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
-    getMyBookings();
-  }, [user, axios, getToken]);
+    getMyBookings(activeTab, page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, activeTab, page]);
 
-  const groupedBookings = useMemo(() => {
-    const groups = { Upcoming: [], Completed: [], Cancelled: [] };
-    bookings.forEach((item) => {
-      groups[getCategory(item)].push(item);
-    });
-    return groups;
-  }, [bookings]);
+  useEffect(() => {
+    if (!user) return;
+    refreshTabCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  const switchTab = (tab) => {
+    setActiveTab(tab);
+    setPage(1);
+  };
 
   const canCancel = (item) =>
     item.isPaid &&
@@ -110,7 +125,8 @@ const MyBookings = () => {
       );
       if (data.success) {
         toast.success(data.message || "Booking cancelled");
-        getMyBookings();
+        getMyBookings(activeTab, page);
+        refreshTabCounts();
       } else {
         toast.error(data.message || "Failed to cancel booking");
       }
@@ -141,8 +157,6 @@ const MyBookings = () => {
     setDownloadingId(null);
   };
 
-  const activeBookings = groupedBookings[activeTab];
-
   return !isLoading ? (
     <div className="relative px-6 md:px-16 lg:px-40 pt-30 md:pt-40 min-h-[80vh]">
       <BlurCircle top="100px" left="100px" />
@@ -157,23 +171,23 @@ const MyBookings = () => {
         {TABS.map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => switchTab(tab)}
             className={`px-4 py-2 text-sm font-medium cursor-pointer border-b-2 -mb-px transition ${
               activeTab === tab
                 ? "border-primary text-primary"
                 : "border-transparent text-gray-400 hover:text-white"
             }`}
           >
-            {tab} ({groupedBookings[tab].length})
+            {tab} ({tabCounts[tab]})
           </button>
         ))}
       </div>
 
-      {activeBookings.length === 0 && (
+      {bookings.length === 0 && (
         <p className="text-gray-400 text-sm mt-6">No {activeTab.toLowerCase()} bookings.</p>
       )}
 
-      {activeBookings.map((item, index) => (
+      {bookings.map((item, index) => (
         <div
           key={index}
           className="flex flex-col md:flex-row justify-between bg-primary/8 border border-primary/20 rounded-lg mt-4 p-2 max-w-3xl"
@@ -265,6 +279,26 @@ const MyBookings = () => {
           </div>
         </div>
       ))}
+
+      {totalPages > 1 && (
+        <div className="flex items-center gap-4 mt-6 mb-6 max-w-3xl text-sm">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="text-primary font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            Previous
+          </button>
+          <span className="text-gray-400">Page {page} of {totalPages}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="text-primary font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   ) : (
     <Loading />

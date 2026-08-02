@@ -2,6 +2,7 @@ import { Inngest } from "inngest";
 import User from "../models/User.js";
 import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
+import Follow from "../models/Follow.js";
 import sendEmail from "../configs/nodeMailer.js";
 import { logger } from "../configs/logger.js";
 import { buildBookingIcs } from "../utils/calendarEvent.js";
@@ -206,8 +207,14 @@ const sendNewShowNotification = inngest.createFunction(
   { id: 'send-new-show-notification' },
   { event: 'app/show.added' },
   async ({ event }) => {
-    const { movieTitle } = event.data;
-    const users = await User.find({})
+    const { movieId, movieTitle } = event.data;
+
+    const follows = await Follow.find({ movie: movieId });
+    if (follows.length === 0) {
+      return { message: 'No followers to notify' };
+    }
+
+    const users = await User.find({ _id: { $in: follows.map(f => f.user) } });
 
     for(const user of users) {
       await sendEmail({
@@ -216,7 +223,7 @@ const sendNewShowNotification = inngest.createFunction(
         body: renderEmail({
           greetingName: user.name,
           bodyHtml: `
-            <p>We are excited to inform you that a new show for the movie ${highlight(`"${movieTitle}"`)} has been added!</p>
+            <p>We are excited to inform you that a new show for the movie ${highlight(`"${movieTitle}"`)} you're following has been added!</p>
             <p>Check it out now and book your tickets!</p>
           `,
           closingLine: 'Thanks for being a part of our community!',
@@ -224,7 +231,7 @@ const sendNewShowNotification = inngest.createFunction(
       })
     }
 
-    return { message: `Notification sent` }
+    return { message: `Notification sent to ${users.length} follower(s)` }
   }
 )
 

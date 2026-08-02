@@ -1,5 +1,5 @@
 import express from "express"
-import { addShow, deleteShow, editShow, getNowPlayingMovies, getShow, getShows } from "../controllers/showController.js";
+import { addShow, deleteShow, editShow, getNowPlayingMovies, getShow, getShows, getSimilarMovies, searchBookableMovies, searchMovies } from "../controllers/showController.js";
 import { protectAdmin } from "../middleware/auth.js";
 import { publicApiLimiter } from "../middleware/rateLimit.js";
 
@@ -30,6 +30,38 @@ const showRouter = express.Router();
  *         $ref: '#/components/responses/ServerError'
  */
 showRouter.get('/now-playing', protectAdmin , getNowPlayingMovies)
+
+/**
+ * @openapi
+ * /show/search:
+ *   get:
+ *     summary: Search for a movie by title (local DB first, falls back to TMDB)
+ *     tags: [Show]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: admin only. Used by the Add Show movie picker."
+ *     parameters:
+ *       - in: query
+ *         name: query
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Matching movies
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               movies: [{ id: 1234, title: "Example Movie" }]
+ *               source: "local"
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+showRouter.get('/search', protectAdmin , searchMovies)
 
 /**
  * @openapi
@@ -104,6 +136,66 @@ showRouter.post('/add' , protectAdmin , addShow)
  *         $ref: '#/components/responses/ServerError'
  */
 showRouter.get('/all' , publicApiLimiter, getShows)
+
+/**
+ * @openapi
+ * /show/all/search:
+ *   get:
+ *     summary: Search movies with upcoming shows by title/overview (falls back to TMDB if none found locally)
+ *     tags: [Show]
+ *     description: "Auth: none (public). Rate limited per IP."
+ *     parameters:
+ *       - in: query
+ *         name: query
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Matching movies
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               movies: [{ _id: "1234", title: "Example Movie" }]
+ *               source: "local"
+ *       429:
+ *         $ref: '#/components/responses/TooManyRequests'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+showRouter.get('/all/search' , publicApiLimiter, searchBookableMovies)
+
+/**
+ * @openapi
+ * /show/similar/{movieId}:
+ *   get:
+ *     summary: Get movies sharing at least one genre with the given movie
+ *     tags: [Show]
+ *     description: >
+ *       Auth: none (public). Rate limited per IP. Pulled from the local Movie collection
+ *       (movies already synced via addShow). Returns an empty array if the movie has no
+ *       recorded genres, or if fewer than 2 similar movies are found.
+ *     parameters:
+ *       - in: path
+ *         name: movieId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Similar movies
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               movies: [{ _id: "1234", title: "Example Movie" }]
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       429:
+ *         $ref: '#/components/responses/TooManyRequests'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+showRouter.get('/similar/:movieId' , publicApiLimiter, getSimilarMovies)
 
 /**
  * @openapi

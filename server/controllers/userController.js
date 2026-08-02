@@ -1,19 +1,75 @@
 import Booking from "../models/Booking.js";
 import { clerkClient } from "@clerk/express";
 import Movie from "../models/Movie.js";
+import Follow from "../models/Follow.js";
 import asyncHandler from '../utils/asyncHandler.js';
+import AppError from '../utils/AppError.js';
+import { parsePagination, buildPageMeta } from '../utils/pagination.js';
 
+const CANCELLED_STATUSES = ['cancelled', 'pending-cancellation'];
+
+const categoryMatch = (category) => {
+    if (category === 'Cancelled') {
+        return { status: { $in: CANCELLED_STATUSES } };
+    }
+    if (category === 'Upcoming') {
+        return {
+            status: { $nin: CANCELLED_STATUSES },
+            isPaid: true,
+            'show.showDateTime': { $gt: new Date() },
+        };
+    }
+    if (category === 'Completed') {
+        return {
+            status: { $nin: CANCELLED_STATUSES },
+            $or: [{ isPaid: false }, { 'show.showDateTime': { $lte: new Date() } }],
+        };
+    }
+    return {};
+};
 
 // API controller function to get user bookings
 export const getUserBookings = asyncHandler(async (req, res) => {
     const user = req.auth().userId;
+    const { category } = req.query;
+    const { page, limit, skip } = parsePagination(req.query);
 
-    const bookings = await Booking.find({ user }).populate({
-        path: "show",
-        populate: { path: "movie" }
-    }).sort({ createdAt: -1 });
+    const basePipeline = [
+        { $match: { user } },
+        {
+            $lookup: {
+                from: 'shows',
+                let: { showId: '$show' },
+                pipeline: [{ $match: { $expr: { $eq: [{ $toString: '$_id' }, '$$showId'] } } }],
+                as: 'show',
+            },
+        },
+        { $unwind: { path: '$show', preserveNullAndEmptyArrays: true } },
+        { $match: categoryMatch(category) },
+    ];
 
-    res.json({ success: true, bookings });
+    const [bookings, [countResult]] = await Promise.all([
+        Booking.aggregate([
+            ...basePipeline,
+            { $sort: { createdAt: -1 } },
+            { $skip: skip },
+            { $limit: limit },
+            {
+                $lookup: {
+                    from: 'movies',
+                    let: { movieId: '$show.movie' },
+                    pipeline: [{ $match: { $expr: { $eq: ['$_id', '$$movieId'] } } }],
+                    as: 'show.movie',
+                },
+            },
+            { $unwind: { path: '$show.movie', preserveNullAndEmptyArrays: true } },
+        ]),
+        Booking.aggregate([...basePipeline, { $count: 'total' }]),
+    ]);
+
+    const total = countResult?.total || 0;
+
+    res.json({ success: true, bookings, pageInfo: buildPageMeta(page, limit, total) });
 });
 
 
@@ -53,4 +109,57 @@ export const getFavorites = asyncHandler(async (req, res) => {
     const movies = await Movie.find({ _id: { $in: favorites }});
 
     res.json({ success: true, movies });
+});
+
+
+export const followMovie = asyncHandler(async (req, res) => {
+    const { movieId } = req.body;
+    const userId = req.auth().userId;
+
+    if (!movieId || typeof movieId !== 'string') {
+        throw new AppError('movieId is required', 400, 'INVALID_INPUT');
+    }
+
+    const movie = await Movie.findById(movieId);
+    if (!movie) {
+        throw new AppError('Movie not found', 404, 'MOVIE_NOT_FOUND');
+    }
+
+    await Follow.updateOne(
+        { user: userId, movie: movieId },
+        { user: userId, movie: movieId },
+        { upsert: true }
+    );
+
+    res.json({ success: true, following: true });
+});
+
+
+export const unfollowMovie = asyncHandler(async (req, res) => {
+    const { movieId } = req.params;
+    const userId = req.auth().userId;
+
+    await Follow.deleteOne({ user: userId, movie: movieId });
+
+    res.json({ success: true, following: false });
+});
+
+
+export const getFollowedMovies = asyncHandler(async (req, res) => {
+    const userId = req.auth().userId;
+
+    const follows = await Follow.find({ user: userId });
+    const movies = await Movie.find({ _id: { $in: follows.map(f => f.movie) } });
+
+    res.json({ success: true, movies });
+});
+
+
+export const getFollowStatus = asyncHandler(async (req, res) => {
+    const userId = req.auth().userId;
+    const { movieId } = req.params;
+
+    const follow = await Follow.findOne({ user: userId, movie: movieId });
+
+    res.json({ success: true, following: Boolean(follow) });
 });
