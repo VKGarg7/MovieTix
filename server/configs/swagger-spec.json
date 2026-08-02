@@ -176,6 +176,38 @@
           }
         ],
         "description": "Auth: signed-in user.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Upcoming",
+                "Completed",
+                "Cancelled"
+              ]
+            },
+            "description": "Filter to a single tab category; omit to get all bookings."
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The user's bookings",
@@ -189,7 +221,13 @@
                       "amount": 500,
                       "isPaid": true
                     }
-                  ]
+                  ],
+                  "pageInfo": {
+                    "page": 1,
+                    "limit": 20,
+                    "total": 42,
+                    "totalPages": 3
+                  }
                 }
               }
             }
@@ -293,6 +331,290 @@
         }
       }
     },
+    "/user/follow": {
+      "post": {
+        "summary": "Follow a movie to get notified when a show is first added for it",
+        "tags": [
+          "User"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: signed-in user.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "movieId"
+                ],
+                "properties": {
+                  "movieId": {
+                    "type": "string",
+                    "example": "1234"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Now following the movie",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "following": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/user/follow/{movieId}": {
+      "delete": {
+        "summary": "Unfollow a movie",
+        "tags": [
+          "User"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: signed-in user.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "movieId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No longer following the movie",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "following": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "get": {
+        "summary": "Check whether the authenticated user follows a movie",
+        "tags": [
+          "User"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: signed-in user.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "movieId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Follow status",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "following": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/user/following": {
+      "get": {
+        "summary": "Get all movies the authenticated user follows",
+        "tags": [
+          "User"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: signed-in user.",
+        "responses": {
+          "200": {
+            "description": "Followed movies",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "movies": [
+                    {
+                      "_id": "1234",
+                      "title": "Example Movie"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/theater": {
+      "get": {
+        "summary": "List theaters, optionally filtered by city",
+        "tags": [
+          "Theater"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "city",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Case-insensitive exact city match"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Theaters matching the filter",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "theaters": [
+                    {
+                      "_id": "abc123",
+                      "name": "PVR",
+                      "city": "Noida",
+                      "slug": "pvr"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "summary": "Register a new theater",
+        "tags": [
+          "Theater"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: super-admin only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "name": "PVR",
+                "city": "Noida",
+                "address": "DLF Mall of India, Sector 18",
+                "geolocation": {
+                  "lat": 28.5677,
+                  "lng": 77.3219
+                },
+                "contactEmail": "pvr.noida@example.com",
+                "timezone": "Asia/Kolkata"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Theater created",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "theater": {
+                    "_id": "abc123",
+                    "name": "PVR",
+                    "city": "Noida",
+                    "slug": "pvr"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "A theater with this name already exists in this city"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/show/now-playing": {
       "get": {
         "summary": "Get movies currently playing (from TMDB)",
@@ -335,6 +657,58 @@
         }
       }
     },
+    "/show/search": {
+      "get": {
+        "summary": "Search for a movie by title (local DB first, falls back to TMDB)",
+        "tags": [
+          "Show"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: admin only. Used by the Add Show movie picker.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching movies",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "movies": [
+                    {
+                      "id": 1234,
+                      "title": "Example Movie"
+                    }
+                  ],
+                  "source": "local"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/show/add": {
       "post": {
         "summary": "Add a new show (creates the movie record if it doesn't exist yet)",
@@ -346,7 +720,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Auth: admin only.",
+        "description": "Auth: admin only. A theater-admin may only add shows to a screen belonging to their own theater (403 otherwise); super-admins may target any screen.\n",
         "requestBody": {
           "required": true,
           "content": {
@@ -461,6 +835,96 @@
         }
       }
     },
+    "/show/all/search": {
+      "get": {
+        "summary": "Search movies with upcoming shows by title/overview (falls back to TMDB if none found locally)",
+        "tags": [
+          "Show"
+        ],
+        "description": "Auth: none (public). Rate limited per IP.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching movies",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "movies": [
+                    {
+                      "_id": "1234",
+                      "title": "Example Movie"
+                    }
+                  ],
+                  "source": "local"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/show/similar/{movieId}": {
+      "get": {
+        "summary": "Get movies sharing at least one genre with the given movie",
+        "tags": [
+          "Show"
+        ],
+        "description": "Auth: none (public). Rate limited per IP. Pulled from the local Movie collection (movies already synced via addShow). Returns an empty array if the movie has no recorded genres, or if fewer than 2 similar movies are found.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "movieId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Similar movies",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "movies": [
+                    {
+                      "_id": "1234",
+                      "title": "Example Movie"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/show/{movieId}": {
       "get": {
         "summary": "Get a movie's details plus its upcoming showtimes grouped by date",
@@ -503,6 +967,515 @@
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/show/{showId}": {
+      "put": {
+        "summary": "Edit a show's date/time and/or price",
+        "tags": [
+          "Show"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: admin only, scoped to the owning theater. Changing showDateTime is blocked with a 409 if the show has any paid bookings; any pending (unpaid) reservations are invalidated (seats released, booking deleted, user notified by email).\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "showId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "showDateTime": {
+                    "type": "string",
+                    "example": "2026-08-01T18:30:00+05:30"
+                  },
+                  "showPrice": {
+                    "type": "number",
+                    "example": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Show updated",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Show updated successfully"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cancel/delete a show",
+        "tags": [
+          "Show"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: admin only, scoped to the owning theater. Soft-deletes (isCancelled: true) so historical booking records remain valid; blocked with a 409 if the show has any paid bookings. Any pending (unpaid) reservations are invalidated.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "showId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Show cancelled",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Show cancelled successfully"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/screen": {
+      "get": {
+        "summary": "List screens, optionally filtered by theater",
+        "tags": [
+          "Screen"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "theaterId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter to screens belonging to this theater"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Screens matching the filter",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "screens": [
+                    {
+                      "_id": "abc123",
+                      "name": "Screen 1",
+                      "totalCapacity": 90
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a screen with a seat-row layout under a theater",
+        "tags": [
+          "Screen"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: super-admin only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "theaterId": "abc123",
+                "name": "Screen 1",
+                "rows": [
+                  {
+                    "label": "A",
+                    "seatCount": 9,
+                    "seatType": "regular"
+                  },
+                  {
+                    "label": "B",
+                    "seatCount": 9,
+                    "seatType": "regular"
+                  },
+                  {
+                    "label": "C",
+                    "seatCount": 6,
+                    "seatType": "premium"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Screen created",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "screen": {
+                    "_id": "abc123",
+                    "name": "Screen 1",
+                    "totalCapacity": 24
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Theater not found"
+          },
+          "409": {
+            "description": "A screen with this name already exists in this theater"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/screen/{screenId}": {
+      "patch": {
+        "summary": "Update a screen's name and/or seat-row layout",
+        "tags": [
+          "Screen"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: admin only (theater-admins may only edit screens belonging to their own theater; 403 otherwise). Editing rows is blocked (409) if the screen has any upcoming show, since changing seat counts/types would invalidate already-sold seat IDs.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "screenId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "name": "Screen 1 (Renamed)",
+                "rows": [
+                  {
+                    "label": "A",
+                    "seatCount": 9,
+                    "seatType": "regular"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Screen updated"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Screen not found"
+          },
+          "409": {
+            "description": "Screen has upcoming shows; rows cannot be edited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/review": {
+      "post": {
+        "summary": "Submit or edit a review for a movie",
+        "tags": [
+          "Review"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: signed-in user. Only succeeds if the caller has a paid booking for a show of this movie whose showDateTime is in the past. One review per user per movie — submitting again edits the existing review instead of creating a duplicate.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "movieId",
+                  "rating"
+                ],
+                "properties": {
+                  "movieId": {
+                    "type": "string",
+                    "example": "1234"
+                  },
+                  "rating": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "example": 4
+                  },
+                  "text": {
+                    "type": "string",
+                    "example": "Great watch, would recommend."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Review created/updated",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "review": {
+                    "_id": "abc123",
+                    "rating": 4,
+                    "text": "Great watch, would recommend."
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "description": "Caller has no completed paid booking for this movie"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/review/me/{movieId}": {
+      "get": {
+        "summary": "Get the authenticated user's own review for a movie, if any",
+        "tags": [
+          "Review"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: signed-in user. Used to pre-fill the review form for editing.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "movieId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's review, or null if none exists",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "review": null
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/review/{movieId}": {
+      "get": {
+        "summary": "Get all reviews and the average rating for a movie",
+        "tags": [
+          "Review"
+        ],
+        "description": "Auth: none (public). Rate limited per IP.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "movieId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reviews and aggregate rating",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "reviews": [
+                    {
+                      "_id": "abc123",
+                      "rating": 4,
+                      "text": "Great watch."
+                    }
+                  ],
+                  "averageRating": 4.2,
+                  "reviewCount": 15
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/recommendations": {
+      "get": {
+        "summary": "Get personalized movie recommendations for the authenticated user",
+        "tags": [
+          "Recommendations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: signed-in user. v1 scores not-yet-booked bookable movies by weighted genre-overlap with the user's paid booking history (weighted higher) and followed movies (weighted lower), tie-broken by TMDB rating. Falls back to rating-only ranking when the user has no booking/follow history, or when no genre overlap exists with any candidate.\n",
+        "responses": {
+          "200": {
+            "description": "Up to 5 recommended movies, each with a plain-language reason",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "recommendations": [
+                    {
+                      "movie": {
+                        "_id": "1234",
+                        "title": "Example Movie"
+                      },
+                      "reason": "Because you liked Paper Moons (Drama)"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
           },
           "500": {
             "$ref": "#/components/responses/ServerError"
@@ -671,6 +1644,102 @@
         }
       }
     },
+    "/booking/cancel/{bookingId}": {
+      "post": {
+        "summary": "Cancel a paid booking, refund via Stripe, and release the seats",
+        "tags": [
+          "Booking"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: signed-in user (must own the booking). Must be at least the theater's cancellation cutoff (default 2 hours) before the showtime.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bookingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Booking cancelled and refund initiated",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Booking cancelled and refund initiated"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/booking/calendar/{bookingId}": {
+      "get": {
+        "summary": "Download an .ics calendar event for a paid booking",
+        "tags": [
+          "Booking"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Auth: signed-in user (must own the booking). Only available for paid bookings. Event start/end are computed from the show's showDateTime and the movie's runtime (falls back to 2 hours if runtime is missing).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bookingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ".ics file",
+            "content": {
+              "text/calendar": {}
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/admin/is-admin": {
       "get": {
         "summary": "Check whether the authenticated user is an admin",
@@ -682,15 +1751,16 @@
             "bearerAuth": []
           }
         ],
-        "description": "Auth: admin only. (protectAdmin already rejects non-admins with 403, so a 200 response always means true.)",
+        "description": "Auth: admin only (super-admin or theater-admin). (protectAdmin already rejects non-admins with 403, so a 200 response always means true.)",
         "responses": {
           "200": {
-            "description": "Confirmation of admin status",
+            "description": "Confirmation of admin status, plus the caller's specific role",
             "content": {
               "application/json": {
                 "example": {
                   "success": true,
-                  "isAdmin": true
+                  "isAdmin": true,
+                  "role": "theaterAdmin"
                 }
               }
             }
@@ -715,7 +1785,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Auth: admin only.",
+        "description": "Auth: admin only. A theater-admin's totals are scoped to their own theater; totalUser is only populated for super-admins (null otherwise, since users aren't theater-scoped).\n",
         "responses": {
           "200": {
             "description": "Dashboard data",
@@ -756,7 +1826,26 @@
             "bearerAuth": []
           }
         ],
-        "description": "Auth: admin only.",
+        "description": "Auth: admin only. A theater-admin only sees shows at their own theater; super-admins see all.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Upcoming shows",
@@ -770,7 +1859,13 @@
                       "showDateTime": "2026-08-01T14:00:00+05:30",
                       "showPrice": 250
                     }
-                  ]
+                  ],
+                  "pageInfo": {
+                    "page": 1,
+                    "limit": 20,
+                    "total": 42,
+                    "totalPages": 3
+                  }
                 }
               }
             }
@@ -798,7 +1893,26 @@
             "bearerAuth": []
           }
         ],
-        "description": "Auth: admin only.",
+        "description": "Auth: admin only. A theater-admin only sees bookings for shows at their own theater; super-admins see all.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Paid bookings",
@@ -812,7 +1926,13 @@
                       "amount": 500,
                       "isPaid": true
                     }
-                  ]
+                  ],
+                  "pageInfo": {
+                    "page": 1,
+                    "limit": 20,
+                    "total": 42,
+                    "totalPages": 3
+                  }
                 }
               }
             }

@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "docs:generate": "node scripts/generateSwaggerSpec.js",
     "seed:movies": "node scripts/seedDummyMovies.js",
+    "seed:theaters": "node scripts/seedTheaters.js",
     "test": "vitest run"
   },
   "keywords": [],

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import timeFormat from "../lib/timeFormat";
-import { StarIcon, Heart, PlayCircleIcon } from "lucide-react";
+import { StarIcon, Heart, PlayCircleIcon, BellIcon, BellRingIcon } from "lucide-react";
 import BlurCircle from "../components/BlurCircle";
 import DateSelect from "../components/DateSelect";
 import MovieCard from "../components/MovieCard";
@@ -14,13 +14,137 @@ const MovieDetails = () => {
   const { id } = useParams();
   const [show, setShow] = useState(null);
 
-  const {shows , axios , getToken , user , fetchFavoriteMovies , favoriteMovies , image_base_url , selectedTheater , fetchShowDetails} = useAppContext();
+  const {axios , getToken , user , fetchFavoriteMovies , favoriteMovies , image_base_url , selectedTheater , fetchShowDetails} = useAppContext();
+
+  const [similarMovies, setSimilarMovies] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [averageRating, setAverageRating] = useState(null);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [myReview, setMyReview] = useState(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewText, setReviewText] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   const getShow = async () => {
     const data = await fetchShowDetails(id, selectedTheater?._id);
     if (data) {
       setShow(data);
     }
+  };
+
+  const getSimilarMovies = async () => {
+    try {
+      const { data } = await axios.get(`/api/show/similar/${id}`);
+      if (data.success) {
+        setSimilarMovies(data.movies);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const getReviews = async () => {
+    try {
+      const { data } = await axios.get(`/api/review/${id}`);
+      if (data.success) {
+        setReviews(data.reviews);
+        setAverageRating(data.averageRating);
+        setReviewCount(data.reviewCount);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const getMyReview = async () => {
+    if (!user) {
+      setMyReview(null);
+      setReviewRating(0);
+      setReviewText("");
+      return;
+    }
+    try {
+      const { data } = await axios.get(`/api/review/me/${id}`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success) {
+        setMyReview(data.review);
+        setReviewRating(data.review?.rating || 0);
+        setReviewText(data.review?.text || "");
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleSubmitReview = async () => {
+    if (reviewRating < 1) {
+      return toast.error("Please select a rating");
+    }
+    setSubmittingReview(true);
+    try {
+      const { data } = await axios.post(
+        "/api/review",
+        { movieId: id, rating: reviewRating, text: reviewText },
+        { headers: { Authorization: `Bearer ${await getToken()}` } }
+      );
+      if (data.success) {
+        toast.success(myReview ? "Review updated" : "Review submitted");
+        setMyReview(data.review);
+        getReviews();
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to submit review");
+    }
+    setSubmittingReview(false);
+  };
+
+  const getFollowStatus = async () => {
+    if (!user) {
+      setIsFollowing(false);
+      return;
+    }
+    try {
+      const { data } = await axios.get(`/api/user/follow/${id}`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success) {
+        setIsFollowing(data.following);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleToggleFollow = async () => {
+    if (!user) return toast.error("Please login to follow this movie");
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        const { data } = await axios.delete(`/api/user/follow/${id}`, {
+          headers: { Authorization: `Bearer ${await getToken()}` },
+        });
+        if (data.success) {
+          setIsFollowing(false);
+          toast.success("Unfollowed. You won't be notified about new shows.");
+        }
+      } else {
+        const { data } = await axios.post(
+          "/api/user/follow",
+          { movieId: id },
+          { headers: { Authorization: `Bearer ${await getToken()}` } }
+        );
+        if (data.success) {
+          setIsFollowing(true);
+          toast.success("Following! We'll email you when a show is added.");
+        }
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to update follow status");
+    }
+    setFollowLoading(false);
   };
 
   const handleFavorite = async () => {
@@ -41,9 +165,18 @@ const MovieDetails = () => {
 
   useEffect(() => {
     getShow();
+    getReviews();
+    getSimilarMovies();
     // re-run when the movie id or selected theater changes, not on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, selectedTheater]);
+
+  useEffect(() => {
+    getMyReview();
+    getFollowStatus();
+    // re-run when the movie id or signed-in user changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, user]);
 
   return show ? (
     <div className="px-6 md:px-16 lg:px-40 pt-30 md:pt-50">
@@ -63,9 +196,17 @@ const MovieDetails = () => {
             {show.movie.title}
           </h1>
 
-          <div className="flex items-center gap-2 text-gray-300">
-            <StarIcon className="w-5 h-5 text-primary fill-primary" />
-            {show.movie.vote_average.toFixed(1)} User Rating
+          <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-gray-300">
+            <div className="flex items-center gap-2">
+              <StarIcon className="w-5 h-5 text-primary fill-primary" />
+              {show.movie.vote_average.toFixed(1)} TMDB Rating
+            </div>
+            {averageRating !== null && (
+              <div className="flex items-center gap-2">
+                <StarIcon className="w-5 h-5 text-yellow-400 fill-yellow-400" />
+                {averageRating.toFixed(1)} ({reviewCount} {reviewCount === 1 ? "review" : "reviews"})
+              </div>
+            )}
           </div>
 
           <p className="text-gray-400 mt-2 text-sm leading-tight max-w-xl">
@@ -92,6 +233,20 @@ const MovieDetails = () => {
             <button onClick={handleFavorite} className="bg-gray-700 p-2.5 rounded-full transition cursor-pointer active:scale-95">
               <Heart className={`w-5 h-5 ${favoriteMovies.find(movie => movie._id === id) ? 'fill-primary text-primary' : ""}`} />
             </button>
+
+            <button
+              onClick={handleToggleFollow}
+              disabled={followLoading}
+              title={isFollowing ? "Unfollow — stop notifications for new shows" : "Follow — get notified when a show is added"}
+              className="flex items-center gap-2 bg-gray-700 px-4 py-2.5 rounded-full transition cursor-pointer active:scale-95 disabled:opacity-50"
+            >
+              {isFollowing ? (
+                <BellRingIcon className="w-5 h-5 text-primary fill-primary" />
+              ) : (
+                <BellIcon className="w-5 h-5" />
+              )}
+              <span className="text-sm">{isFollowing ? "Following" : "Notify Me"}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -115,12 +270,81 @@ const MovieDetails = () => {
 
       <DateSelect dateTime={show.dateTime} id={id} />
 
-      <p className="text-lg font-medium mt-20 mb-8">You May Also like</p>
-      <div className="flex flex-wrap max-sm:justify-center gap-8">
-        {shows.slice(0, 4).map((movie, index) => (
-          <MovieCard key={index} movie={movie} />
-        ))}
-      </div>
+      <p className="text-lg font-medium mt-20 mb-4">Ratings & Reviews</p>
+
+      {user && (
+        <div className="max-w-xl bg-gray-800/40 rounded-lg p-4 mb-8">
+          <p className="text-sm font-medium mb-2">
+            {myReview ? "Edit your review" : "Rate this movie"}
+          </p>
+          <div className="flex items-center gap-1 mb-3">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                type="button"
+                onClick={() => setReviewRating(star)}
+                aria-label={`Rate ${star} star${star > 1 ? "s" : ""}`}
+              >
+                <StarIcon
+                  className={`w-6 h-6 ${
+                    star <= reviewRating ? "text-primary fill-primary" : "text-gray-500"
+                  }`}
+                />
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={reviewText}
+            onChange={(e) => setReviewText(e.target.value)}
+            placeholder="Share your thoughts (optional)"
+            rows={3}
+            className="w-full bg-gray-900/60 border border-gray-700 rounded-md p-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary"
+          />
+          <button
+            onClick={handleSubmitReview}
+            disabled={submittingReview}
+            className="mt-3 px-6 py-2 text-sm bg-primary hover:bg-primary-dull transition rounded-md font-medium cursor-pointer disabled:opacity-50"
+          >
+            {submittingReview ? "Saving..." : myReview ? "Update Review" : "Submit Review"}
+          </button>
+        </div>
+      )}
+
+      {reviews.length === 0 ? (
+        <p className="text-gray-400 text-sm mb-8">No reviews yet.</p>
+      ) : (
+        <div className="max-w-xl flex flex-col gap-4 mb-8">
+          {reviews.map((review) => (
+            <div key={review._id} className="border-b border-gray-700 pb-3">
+              <div className="flex items-center gap-2">
+                <p className="font-medium text-sm">{review.user?.name || "Anonymous"}</p>
+                <div className="flex items-center">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <StarIcon
+                      key={star}
+                      className={`w-4 h-4 ${
+                        star <= review.rating ? "text-primary fill-primary" : "text-gray-600"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              {review.text && <p className="text-gray-400 text-sm mt-1">{review.text}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {similarMovies.length > 0 && (
+        <>
+          <p className="text-lg font-medium mt-4 mb-8">You might also like</p>
+          <div className="flex flex-wrap max-sm:justify-center gap-8">
+            {similarMovies.map((movie) => (
+              <MovieCard key={movie._id} movie={movie} />
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="flex justify-center mt-20">
         <button

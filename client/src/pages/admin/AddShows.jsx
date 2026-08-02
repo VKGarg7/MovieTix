@@ -4,6 +4,8 @@ import Title from "../../components/admin/Title";
 import {CheckIcon, DeleteIcon, StarIcon } from "lucide-react";
 import { kConverter } from "../../lib/kConverter";
 import { useAppContext } from "../../context/useAppContext";
+import useDebouncedSearch from "../../hooks/useDebouncedSearch";
+import SearchInput from "../../components/SearchInput";
 import toast from "react-hot-toast";
 
 const AddShows = () => {
@@ -13,6 +15,10 @@ const AddShows = () => {
   const currency = import.meta.env.VITE_CURRENCY;
   const [nowPlayingMovies, setNowPlayingMovies] = useState([]);
   const [selectedMovie, setSelectedMovie] = useState(null);
+
+  const [searchInput, setSearchInput, searchTerm] = useDebouncedSearch();
+  const [searchResults, setSearchResults] = useState(null);
+  const [searching, setSearching] = useState(false);
   const [dateTimeSelection, setDateTimeSelection] = useState({});
   const [dateTimeInput, setDateTimeInput] = useState("");
   const [showPrice, setShowPrice] = useState("");
@@ -113,6 +119,43 @@ const AddShows = () => {
   }, [user, fetchTheaters]);
 
   useEffect(() => {
+    if (searchTerm.length < 2) {
+      setSearchResults(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const runSearch = async () => {
+      setSearching(true);
+      try {
+        const { data } = await axios.get("/api/show/search", {
+          params: { query: searchTerm },
+          headers: { Authorization: `Bearer ${await getToken()}` },
+        });
+        if (!cancelled && data.success) {
+          const normalized = data.movies.map((movie) => ({
+            id: movie.id ?? movie._id,
+            title: movie.title,
+            poster_path: movie.poster_path,
+            release_date: movie.release_date,
+            vote_average: movie.vote_average ?? 0,
+            vote_count: movie.vote_count ?? 0,
+          }));
+          setSearchResults(normalized);
+        }
+      } catch (error) {
+        console.error("Error searching movies:", error);
+        if (!cancelled) toast.error("Search failed. Please try again.");
+      }
+      if (!cancelled) setSearching(false);
+    };
+
+    runSearch();
+    return () => { cancelled = true; };
+  }, [searchTerm, axios, getToken]);
+
+  useEffect(() => {
     setSelectedScreen("");
     if (selectedTheater) {
       fetchScreens(selectedTheater).then(setScreens);
@@ -125,11 +168,27 @@ const AddShows = () => {
   return nowPlayingMovies.length > 0 ? (
     <>
       <Title text1="Add" text2="Shows" />
-      <p className="mt-10 text-lg font-medium">Now Playing Movies</p>
 
+      <SearchInput
+        value={searchInput}
+        onChange={setSearchInput}
+        onClear={() => setSearchInput("")}
+        placeholder="Search for a movie..."
+        className="mt-6"
+      />
+
+      <p className="mt-6 text-lg font-medium">
+        {searchResults ? "Search Results" : "Now Playing Movies"}
+      </p>
+
+      {searching ? (
+        <p className="text-gray-400 text-sm mt-4">Searching...</p>
+      ) : searchResults && searchResults.length === 0 ? (
+        <p className="text-gray-400 text-sm mt-4">No movies match "{searchTerm}".</p>
+      ) : (
       <div className="overflow-x-auto pb-4">
         <div className="group flex flex-wrap gap-4 mt-4 w-max">
-          {nowPlayingMovies.map((movie) => (
+          {(searchResults ?? nowPlayingMovies).map((movie) => (
             <div
               key={movie.id}
               className={`relative max-w-40 cursor-progress group-hover:not-hover:opacity-40 hover:-translate-y-1 transition duration-300`}
@@ -166,6 +225,7 @@ const AddShows = () => {
           ))}
         </div>
       </div>
+      )}
 
       {/* theater and screen selection */}
       <div className="mt-8 flex flex-wrap gap-6">

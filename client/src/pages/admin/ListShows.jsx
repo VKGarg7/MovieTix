@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import Loading from '../../components/Loading';
 import Title from '../../components/admin/Title';
+import PaginationControls from '../../components/admin/PaginationControls';
 import { dateFormat } from "../../lib/dateFomat";
 import { useAppContext } from '../../context/useAppContext';
 import toast from 'react-hot-toast';
@@ -17,11 +18,17 @@ const ListShows = () => {
   const [editDateTime, setEditDateTime] = useState('');
   const [editPrice, setEditPrice] = useState('');
   const [savingId, setSavingId] = useState(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const getAllShows = async () => {
+  const getAllShows = async (targetPage = page) => {
     try{
-      const {data} = await axios.get("/api/admin/all-shows", { headers: {Authorization: `Bearer ${await getToken()}` }});
+      const {data} = await axios.get("/api/admin/all-shows", {
+        params: { page: targetPage },
+        headers: {Authorization: `Bearer ${await getToken()}` },
+      });
       setShows(data.shows)
+      setTotalPages(data.pageInfo?.totalPages || 1);
       setLoading(false);
     } catch (error) {
       console.error(error);
@@ -30,11 +37,11 @@ const ListShows = () => {
 
   useEffect(() => {
     if(user){
-      getAllShows();
+      getAllShows(page);
     }
-    // only re-run when the user changes, not on every render
+    // only re-run when the user or page changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[user]);
+  },[user, page]);
 
   const startEdit = (show) => {
     setEditingShow(show._id);
@@ -170,6 +177,8 @@ const ListShows = () => {
 
         </table>
       </div>
+
+      <PaginationControls page={page} totalPages={totalPages} onPageChange={setPage} />
     </>
   ) : <Loading />;
 }

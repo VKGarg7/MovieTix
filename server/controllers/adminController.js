@@ -3,6 +3,7 @@ import Show from '../models/Show.js';
 import User from '../models/User.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { getScreenIdsForTheater, getShowIdsForTheater } from '../utils/theaterScope.js';
+import { parsePagination, buildPageMeta } from '../utils/pagination.js';
 
 export const isAdmin = (req, res) => {
     res.json({ success: true, isAdmin: true, role: req.adminContext.role })
@@ -54,8 +55,14 @@ export const getAllShows = asyncHandler(async (req, res) => {
         filter.screen = { $in: await getScreenIdsForTheater(theaterId) };
     }
 
-    const shows = await Show.find(filter).populate('movie').sort({ showDateTime: 1 });
-    res.json({success: true, shows})
+    const { page, limit, skip } = parsePagination(req.query);
+
+    const [shows, total] = await Promise.all([
+        Show.find(filter).populate('movie').sort({ showDateTime: 1 }).skip(skip).limit(limit),
+        Show.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, shows, pageInfo: buildPageMeta(page, limit, total) })
 });
 
 
@@ -67,10 +74,15 @@ export const getAllBookings = asyncHandler(async (req, res) => {
         filter.show = { $in: await getShowIdsForTheater(theaterId) };
     }
 
-    const bookings = await Booking.find(filter).populate('user').populate({
-        path: "show",
-        populate: {path: "movie"}
-    }).sort({ createdAt: -1 });
+    const { page, limit, skip } = parsePagination(req.query);
 
-    res.json({ success: true, bookings });
+    const [bookings, total] = await Promise.all([
+        Booking.find(filter).populate('user').populate({
+            path: "show",
+            populate: {path: "movie"}
+        }).sort({ createdAt: -1 }).skip(skip).limit(limit),
+        Booking.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, bookings, pageInfo: buildPageMeta(page, limit, total) });
 });

@@ -12,6 +12,8 @@ import adminRouter from './routes/adminRoutes.js';
 import userRouter from './routes/userRoutes.js';
 import theaterRouter from './routes/theaterRoutes.js';
 import screenRouter from './routes/screenRoutes.js';
+import reviewRouter from './routes/reviewRoutes.js';
+import recommendationRouter from './routes/recommendationRoutes.js';
 import { stripeWebhooks } from './controllers/stripeWebhooks.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { logger, httpLogger } from './configs/logger.js';
@@ -48,6 +50,8 @@ app.use('/api/admin', adminRouter);
 app.use('/api/user', userRouter);
 app.use('/api/theater', theaterRouter);
 app.use('/api/screen', screenRouter);
+app.use('/api/review', reviewRouter);
+app.use('/api/recommendations', recommendationRouter);
 
 // 404 + centralized error handling (must be registered after all routes)
 app.use(notFoundHandler);
