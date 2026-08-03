@@ -1,10 +1,15 @@
 import Booking from "../models/Booking.js";
+import PointsTransaction from "../models/PointsTransaction.js";
+import User from "../models/User.js";
+import Referral from "../models/Referral.js";
 import { clerkClient } from "@clerk/express";
 import Movie from "../models/Movie.js";
 import Follow from "../models/Follow.js";
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
 import { parsePagination, buildPageMeta } from '../utils/pagination.js';
+import { getPointsBalance, POINTS_CONFIG } from '../utils/loyaltyPoints.js';
+import { assignReferralCode } from '../utils/referrals.js';
 
 const CANCELLED_STATUSES = ['cancelled', 'pending-cancellation'];
 
@@ -15,14 +20,14 @@ const categoryMatch = (category) => {
     if (category === 'Upcoming') {
         return {
             status: { $nin: CANCELLED_STATUSES },
-            isPaid: true,
-            'show.showDateTime': { $gt: new Date() },
+            $or: [{ isPaid: false }, { 'show.showDateTime': { $gt: new Date() } }],
         };
     }
     if (category === 'Completed') {
         return {
             status: { $nin: CANCELLED_STATUSES },
-            $or: [{ isPaid: false }, { 'show.showDateTime': { $lte: new Date() } }],
+            isPaid: true,
+            'show.showDateTime': { $lte: new Date() },
         };
     }
     return {};
@@ -162,4 +167,39 @@ export const getFollowStatus = asyncHandler(async (req, res) => {
     const follow = await Follow.findOne({ user: userId, movie: movieId });
 
     res.json({ success: true, following: Boolean(follow) });
+});
+
+
+export const getPointsSummary = asyncHandler(async (req, res) => {
+    const userId = req.auth().userId;
+    const balance = await getPointsBalance(userId);
+
+    res.json({ success: true, balance, config: POINTS_CONFIG });
+});
+
+
+export const getPointsHistory = asyncHandler(async (req, res) => {
+    const userId = req.auth().userId;
+    const { page, limit, skip } = parsePagination(req.query);
+
+    const [transactions, total] = await Promise.all([
+        PointsTransaction.find({ user: userId }).sort({ createdAt: -1 }).skip(skip).limit(limit),
+        PointsTransaction.countDocuments({ user: userId }),
+    ]);
+
+    res.json({ success: true, transactions, pageInfo: buildPageMeta(page, limit, total) });
+});
+
+
+export const getReferralInfo = asyncHandler(async (req, res) => {
+    const userId = req.auth().userId;
+
+    let referralCode = (await User.findById(userId).select('referralCode'))?.referralCode;
+    if (!referralCode) {
+        referralCode = await assignReferralCode(userId);
+    }
+
+    const referralCount = await Referral.countDocuments({ referrer: userId, rewardGranted: true });
+
+    res.json({ success: true, referralCode, referralCount });
 });

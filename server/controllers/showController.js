@@ -15,6 +15,7 @@ import { renderEmail, highlight } from '../utils/emailTemplate.js';
 import tmdb from '../utils/tmdbClient.js';
 import { bookableShowFilter, getBookableMovieIds } from '../utils/showQueries.js';
 import { getGenreNames } from '../utils/movieGenres.js';
+import { fetchApplicableRules, computeShowPrice } from '../utils/dynamicPricing.js';
 
 
 export const getNowPlayingMovies = asyncHandler(async (req, res) => {
@@ -254,10 +255,12 @@ export const getShow = asyncHandler(async (req, res) => {
         { $match: match },
         { $lookup: { from: 'screens', localField: 'screen', foreignField: '_id', as: 'screen' } },
         { $unwind: '$screen' },
+        { $lookup: { from: 'theaters', localField: 'screen.theater', foreignField: '_id', as: 'screen.theater' } },
+        { $unwind: '$screen.theater' },
     ];
 
     if (theaterId) {
-        pipeline.push({ $match: { 'screen.theater': new mongoose.Types.ObjectId(theaterId) } });
+        pipeline.push({ $match: { 'screen.theater._id': new mongoose.Types.ObjectId(theaterId) } });
     }
 
     const [shows, movie] = await Promise.all([
@@ -265,15 +268,36 @@ export const getShow = asyncHandler(async (req, res) => {
         Movie.findById(movieId),
     ]);
 
+    const rulesByTheater = new Map();
+    const getRulesFor = async (tId) => {
+        const key = tId.toString();
+        if (!rulesByTheater.has(key)) {
+            rulesByTheater.set(key, await fetchApplicableRules(tId));
+        }
+        return rulesByTheater.get(key);
+    };
+
     const dateTime = {};
 
-    shows.forEach((show) => {
+    for (const show of shows) {
+        const rules = await getRulesFor(show.screen.theater._id);
+        const computedPrice = computeShowPrice(show.showPrice, rules, {
+            showDateTime: show.showDateTime,
+            timezone: show.screen.theater.timezone,
+        });
+
         const date = show.showDateTime.toISOString().split("T")[0];
         if (!dateTime[date]) {
             dateTime[date] = []
         }
-        dateTime[date].push({ time: show.showDateTime, showId: show._id, screen: show.screen })
-    });
+        dateTime[date].push({
+            time: show.showDateTime,
+            showId: show._id,
+            screen: show.screen,
+            showPrice: show.showPrice,
+            computedPrice,
+        })
+    }
 
     res.json({ success: true, movie, dateTime })
 });

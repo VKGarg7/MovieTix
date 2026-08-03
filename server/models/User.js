@@ -5,6 +5,8 @@ const userSchema = new mongoose.Schema({
     name: {type: String, required: true},
     email: {type: String, required: true},
     image: {type: String, required: true},
+    referralCode: {type: String, unique: true, sparse: true},
+    referredBy: {type: String, ref: 'User', default: null},
 })
 
 const User = mongoose.model("User", userSchema);

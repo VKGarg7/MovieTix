@@ -1,6 +1,6 @@
 import express from 'express';
-import { createBooking, getBookingStatus, getOccupiedSeats, cancelBooking, getBookingCalendar } from '../controllers/bookingController.js';
-import { protectUser } from '../middleware/auth.js';
+import { createBooking, getBookingStatus, getOccupiedSeats, cancelBooking, getBookingCalendar, getBookingPickupQr, verifyBookingPickup } from '../controllers/bookingController.js';
+import { protectUser, protectAdmin } from '../middleware/auth.js';
 import { seatPollingLimiter } from '../middleware/rateLimit.js';
 
 const bookingRouter = express.Router();
@@ -172,5 +172,71 @@ bookingRouter.post('/cancel/:bookingId', protectUser, cancelBooking);
  *         $ref: '#/components/responses/ServerError'
  */
 bookingRouter.get('/calendar/:bookingId', protectUser, getBookingCalendar);
+
+/**
+ * @openapi
+ * /booking/pickup-qr/{bookingId}:
+ *   get:
+ *     summary: Get a concession pickup QR code (PNG) for a paid booking with a snack pre-order
+ *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: signed-in user (must own the booking). Encodes a signed pickup token, not the raw booking ID."
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: PNG QR code image
+ *         content:
+ *           image/png: {}
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+bookingRouter.get('/pickup-qr/:bookingId', protectUser, getBookingPickupQr);
+
+/**
+ * @openapi
+ * /booking/verify-pickup:
+ *   post:
+ *     summary: Verify and redeem a concession pickup QR token at the counter
+ *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: admin only (theater-admin scoped to their own theater, or super-admin). Rejects tampered/forged tokens and double-redemption."
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token: { type: string, description: "Raw string decoded from the scanned QR code" }
+ *     responses:
+ *       200:
+ *         description: Pickup confirmed
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         $ref: '#/components/responses/Conflict'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+bookingRouter.post('/verify-pickup', protectAdmin, verifyBookingPickup);
 
 export default bookingRouter;

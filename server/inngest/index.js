@@ -6,9 +6,13 @@ import Follow from "../models/Follow.js";
 import sendEmail from "../configs/nodeMailer.js";
 import { logger } from "../configs/logger.js";
 import { buildBookingIcs } from "../utils/calendarEvent.js";
+import { buildPickupQrPng } from "../utils/qrCode.js";
 import { formatInZone } from "../utils/timezone.js";
 import { SCREEN_WITH_THEATER } from "../utils/theaterScope.js";
 import { releaseSeatsAtomic } from "../utils/seatOperations.js";
+import { releaseCouponAtomic } from "../controllers/couponController.js";
+import { refundRedeemedPoints } from "../utils/loyaltyPoints.js";
+import { assignReferralCode, attributeReferral } from "../utils/referrals.js";
 import { renderEmail, highlight } from "../utils/emailTemplate.js";
 
 export const inngest = new Inngest({ id: "movie-ticket-booking" });
@@ -17,7 +21,7 @@ const syncUserCreation = inngest.createFunction(
   { id: 'sync-user-from-clerk' },
   { event: 'clerk/user.created' },
   async ({ event }) => {
-    const { id, first_name, last_name, email_addresses, image_url } = event.data
+    const { id, first_name, last_name, email_addresses, image_url, unsafe_metadata } = event.data
     const userData = {
       _id: id,
       email: email_addresses[0].email_address,
@@ -25,6 +29,12 @@ const syncUserCreation = inngest.createFunction(
       image: image_url
     }
     await User.create(userData)
+    await assignReferralCode(id)
+
+    const referralCode = unsafe_metadata?.referralCode;
+    if (referralCode) {
+      await attributeReferral(id, referralCode)
+    }
   }
 )
 
@@ -67,6 +77,12 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
 
       if (!booking.isPaid) {
         await releaseSeatsAtomic(booking.show, booking.bookedSeats);
+        if (booking.couponCode) {
+          await releaseCouponAtomic(booking.couponCode);
+        }
+        if (booking.pointsRedeemed > 0) {
+          await refundRedeemedPoints(booking.user, booking._id.toString());
+        }
         await Booking.findByIdAndDelete(booking._id)
         logger.info({ bookingId }, 'Unpaid booking expired, seats released');
       }
@@ -98,6 +114,31 @@ const sendBookingConfirmationEmail = inngest.createFunction(
 
     const { date: showDate, time: showTime } = formatInZone(booking.show.showDateTime, booking.show.screen?.theater?.timezone);
 
+    const hasSnacks = booking.snacks.length > 0;
+    const attachments = [{
+      filename: `${booking.show.movie.title.replace(/[^a-z0-9]/gi, '_')}.ics`,
+      content: icsContent,
+      contentType: 'text/calendar',
+    }];
+
+    if (hasSnacks) {
+      const qrPng = await buildPickupQrPng(booking._id.toString());
+      attachments.push({
+        filename: 'concession-pickup-qr.png',
+        content: qrPng,
+        contentType: 'image/png',
+        cid: 'pickup-qr',
+      });
+    }
+
+    const snacksHtml = hasSnacks ? `
+          <p><strong>Concessions pre-ordered:</strong><br>
+            ${booking.snacks.map(s => `${s.quantity} &times; ${s.name}`).join('<br>')}
+          </p>
+          <p>Show this QR code at the concession counter to pick up your order:</p>
+          <p><img src="cid:pickup-qr" alt="Concession pickup QR code" width="200" height="200"></p>
+        ` : '';
+
     await sendEmail({
       to: booking.user.email,
       subject: `Payment Confirmation: "${booking.show.movie.title}" booked!`,
@@ -110,14 +151,11 @@ const sendBookingConfirmationEmail = inngest.createFunction(
             <strong>Time:</strong> ${showTime}
           </p>
           <p>An "Add to Calendar" invite (.ics) is attached to this email.</p>
+          ${snacksHtml}
         `,
         closingLine: 'Thanks for booking with us! 🍿',
       }),
-      attachments: [{
-        filename: `${booking.show.movie.title.replace(/[^a-z0-9]/gi, '_')}.ics`,
-        content: icsContent,
-        contentType: 'text/calendar',
-      }],
+      attachments,
     })
   }
 )

@@ -32,6 +32,7 @@
     "nodemailer": "^9.0.3",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
+    "qrcode": "^1.5.4",
     "stripe": "^18.3.0",
     "svix": "^1.69.0",
     "swagger-jsdoc": "^6.3.0",

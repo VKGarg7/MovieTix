@@ -52,6 +52,13 @@ const MyBookings = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [tabCounts, setTabCounts] = useState({ Upcoming: 0, Completed: 0, Cancelled: 0 });
+  const [qrModalUrl, setQrModalUrl] = useState(null);
+  const [loadingQrId, setLoadingQrId] = useState(null);
+  const [pointsBalance, setPointsBalance] = useState(0);
+  const [pointsHistory, setPointsHistory] = useState([]);
+  const [showPointsHistory, setShowPointsHistory] = useState(false);
+  const [referralCode, setReferralCode] = useState("");
+  const [referralCount, setReferralCount] = useState(0);
 
   const getMyBookings = async (category, targetPage) => {
     try {
@@ -102,6 +109,68 @@ const MyBookings = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  const getPointsBalance = async () => {
+    try {
+      const { data } = await axios.get("/api/user/points", {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success) setPointsBalance(data.balance);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const togglePointsHistory = async () => {
+    if (showPointsHistory) {
+      setShowPointsHistory(false);
+      return;
+    }
+    try {
+      const { data } = await axios.get("/api/user/points/history", {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success) {
+        setPointsHistory(data.transactions);
+        setShowPointsHistory(true);
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to load points history");
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    getPointsBalance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  const getReferralInfo = async () => {
+    try {
+      const { data } = await axios.get("/api/user/referral", {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success) {
+        setReferralCode(data.referralCode);
+        setReferralCount(data.referralCount);
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    getReferralInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  const referralLink = referralCode ? `${window.location.origin}/?ref=${referralCode}` : "";
+
+  const copyReferralLink = () => {
+    navigator.clipboard.writeText(referralLink);
+    toast.success("Referral link copied");
+  };
+
   const switchTab = (tab) => {
     setActiveTab(tab);
     setPage(1);
@@ -127,6 +196,7 @@ const MyBookings = () => {
         toast.success(data.message || "Booking cancelled");
         getMyBookings(activeTab, page);
         refreshTabCounts();
+        getPointsBalance();
       } else {
         toast.error(data.message || "Failed to cancel booking");
       }
@@ -157,6 +227,26 @@ const MyBookings = () => {
     setDownloadingId(null);
   };
 
+  const handleShowQr = async (bookingId) => {
+    setLoadingQrId(bookingId);
+    try {
+      const response = await axios.get(`/api/booking/pickup-qr/${bookingId}`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: "image/png" }));
+      setQrModalUrl(url);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to load pickup QR code");
+    }
+    setLoadingQrId(null);
+  };
+
+  const closeQrModal = () => {
+    if (qrModalUrl) window.URL.revokeObjectURL(qrModalUrl);
+    setQrModalUrl(null);
+  };
+
   return !isLoading ? (
     <div className="relative px-6 md:px-16 lg:px-40 pt-30 md:pt-40 min-h-[80vh]">
       <BlurCircle top="100px" left="100px" />
@@ -166,6 +256,66 @@ const MyBookings = () => {
       </div>
 
       <h1 className="text-lg font-semibold mb-4">My Bookings</h1>
+
+      <div className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-lg mb-4 p-4 max-w-3xl">
+        <div>
+          <p className="text-sm text-gray-400">Loyalty points balance</p>
+          <p className="text-2xl font-semibold text-primary">{pointsBalance}</p>
+        </div>
+        <button
+          onClick={togglePointsHistory}
+          className="text-sm text-primary font-medium cursor-pointer"
+        >
+          {showPointsHistory ? "Hide history" : "View history"}
+        </button>
+      </div>
+
+      {showPointsHistory && (
+        <div className="max-w-3xl mb-6 border border-primary/20 rounded-lg overflow-hidden">
+          {pointsHistory.length === 0 ? (
+            <p className="text-gray-400 text-sm p-4">No points activity yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {pointsHistory.map((tx) => (
+                  <tr key={tx._id} className="border-b border-primary/10 last:border-0">
+                    <td className="p-3 text-gray-400">{new Date(tx.createdAt).toLocaleDateString()}</td>
+                    <td className="p-3 capitalize">{tx.reason.replace(/_/g, ' ')}</td>
+                    <td className={`p-3 text-right font-medium ${tx.delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {tx.delta > 0 ? '+' : ''}{tx.delta}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {referralCode && (
+        <div className="bg-primary/8 border border-primary/20 rounded-lg mb-6 p-4 max-w-3xl">
+          <p className="text-sm text-gray-400">Invite friends, earn points</p>
+          <p className="text-xs text-gray-500 mt-0.5 mb-3">
+            Share your link — when a friend signs up and completes their first booking, you both earn points.
+            {referralCount > 0 && ` You've referred ${referralCount} friend${referralCount > 1 ? "s" : ""} so far.`}
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              readOnly
+              value={referralLink}
+              onClick={(e) => e.target.select()}
+              className="flex-1 bg-primary/10 border border-primary/30 rounded px-3 py-2 text-sm outline-none"
+            />
+            <button
+              onClick={copyReferralLink}
+              className="px-4 py-2 text-sm bg-primary rounded cursor-pointer"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2 mb-4 border-b border-primary/20 max-w-3xl">
         {TABS.map((tab) => (
@@ -241,6 +391,16 @@ const MyBookings = () => {
                 </button>
               }
 
+              {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.snacks?.length > 0 &&
+                <button
+                  onClick={() => handleShowQr(item._id)}
+                  disabled={loadingQrId === item._id}
+                  className="border border-primary text-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50"
+                >
+                  {loadingQrId === item._id ? "Loading..." : item.concessionPickedUp ? "View Pickup QR (used)" : "Show Pickup QR"}
+                </button>
+              }
+
               {!item.isPaid && item.status !== "cancelled" &&
                 <a
                   href={item.paymentLink}
@@ -275,6 +435,18 @@ const MyBookings = () => {
                 <span className="text-gray-400">Seat Number:</span>
                 {item.bookedSeats.join(", ")}
               </p>
+              {item.snacks?.length > 0 && (
+                <p>
+                  <span className="text-gray-400">Snacks:</span>
+                  {item.snacks.map((s) => `${s.quantity}x ${s.name}`).join(", ")}
+                </p>
+              )}
+              {item.pointsRedeemed > 0 && (
+                <p>
+                  <span className="text-gray-400">Points redeemed:</span>
+                  {item.pointsRedeemed} (-{currency}{item.pointsDiscountAmount})
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -297,6 +469,27 @@ const MyBookings = () => {
           >
             Next
           </button>
+        </div>
+      )}
+
+      {qrModalUrl && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4"
+          onClick={closeQrModal}
+        >
+          <div
+            className="bg-[#1f1f24] border border-primary/20 rounded-lg p-6 flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-medium mb-3">Show this at the concession counter</p>
+            <img src={qrModalUrl} alt="Concession pickup QR code" className="w-56 h-56" />
+            <button
+              onClick={closeQrModal}
+              className="mt-4 text-sm text-gray-400 hover:text-white cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
     </div>
