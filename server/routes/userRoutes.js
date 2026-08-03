@@ -1,5 +1,5 @@
 import express from 'express';
-import { followMovie, getFavorites, getFollowedMovies, getFollowStatus, getUserBookings, unfollowMovie, updateFavorite } from '../controllers/userController.js';
+import { followMovie, getFavorites, getFollowedMovies, getFollowStatus, getUserBookings, unfollowMovie, updateFavorite, getPointsSummary, getPointsHistory, getReferralInfo } from '../controllers/userController.js';
 import { protectUser } from '../middleware/auth.js';
 
 const userRouter = express.Router();
@@ -215,5 +215,86 @@ userRouter.get('/follow/:movieId', protectUser, getFollowStatus);
  *         $ref: '#/components/responses/ServerError'
  */
 userRouter.get('/following', protectUser, getFollowedMovies);
+
+/**
+ * @openapi
+ * /user/points:
+ *   get:
+ *     summary: Get the authenticated user's loyalty points balance
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: signed-in user. Balance is the sum of all ledger transactions (auditable, never a separately-mutated field)."
+ *     responses:
+ *       200:
+ *         description: Points balance
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               balance: 240
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+userRouter.get('/points', protectUser, getPointsSummary);
+
+/**
+ * @openapi
+ * /user/points/history:
+ *   get:
+ *     summary: Get the authenticated user's loyalty points transaction history
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: signed-in user."
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, maximum: 100 }
+ *     responses:
+ *       200:
+ *         description: Points transaction history
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               transactions: [{ delta: 500, reason: "earned", booking: "def456" }]
+ *               pageInfo: { page: 1, limit: 20, total: 3, totalPages: 1 }
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+userRouter.get('/points/history', protectUser, getPointsHistory);
+
+/**
+ * @openapi
+ * /user/referral:
+ *   get:
+ *     summary: Get the authenticated user's referral code and successful-referral count
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: signed-in user. referralCode is lazily backfilled for accounts created before this feature shipped."
+ *     responses:
+ *       200:
+ *         description: Referral info
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               referralCode: "AB12CD34"
+ *               referralCount: 3
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+userRouter.get('/referral', protectUser, getReferralInfo);
 
 export default userRouter;

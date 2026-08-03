@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Screen from '../models/Screen.js';
 import Show from '../models/Show.js';
 import Booking from '../models/Booking.js';
@@ -26,4 +27,29 @@ export const assertScreenBelongsToTheater = (screen, adminContext) => {
     if (role === 'theaterAdmin' && screenTheaterId !== theaterId) {
         throw new AppError('This screen does not belong to your theater', 403, 'NOT_AUTHORIZED');
     }
+};
+
+export const loadTheaterScopedResource = async (Model, id, adminContext, resourceLabel) => {
+    const resource = await Model.findById(id);
+    if (!resource) {
+        throw new AppError(`${resourceLabel} not found`, 404, `${resourceLabel.toUpperCase().replace(/\s+/g, '_')}_NOT_FOUND`);
+    }
+    if (adminContext.role === 'theaterAdmin' && (!resource.theaterId || resource.theaterId.toString() !== adminContext.theaterId)) {
+        throw new AppError(`This ${resourceLabel.toLowerCase()} does not belong to your theater`, 403, 'NOT_AUTHORIZED');
+    }
+    return resource;
+};
+
+export const resolveTheaterIdForCreate = (adminContext, requestedTheaterId, { allowNullForSuperAdmin = false } = {}) => {
+    const { role, theaterId } = adminContext;
+    if (role === 'theaterAdmin') return theaterId;
+
+    if (!requestedTheaterId) {
+        if (allowNullForSuperAdmin) return null;
+        throw new AppError('A valid theaterId is required', 400, 'INVALID_INPUT');
+    }
+    if (!mongoose.Types.ObjectId.isValid(requestedTheaterId)) {
+        throw new AppError('A valid theaterId is required', 400, 'INVALID_INPUT');
+    }
+    return requestedTheaterId;
 };

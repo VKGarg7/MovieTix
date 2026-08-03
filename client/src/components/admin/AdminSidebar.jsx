@@ -6,6 +6,10 @@ import {
   PlusSquareIcon,
   ListIcon,
   ListCollapseIcon,
+  TicketPercentIcon,
+  TrendingUpIcon,
+  PopcornIcon,
+  QrCodeIcon,
 } from "lucide-react";
 
 const AdminSidebar = () => {
@@ -24,6 +28,10 @@ const AdminSidebar = () => {
       path: "/admin/list-bookings",
       icon: ListCollapseIcon,
     },
+    { name: "Coupons", path: "/admin/coupons", icon: TicketPercentIcon },
+    { name: "Pricing Rules", path: "/admin/pricing-rules", icon: TrendingUpIcon },
+    { name: "Menu Items", path: "/admin/menu-items", icon: PopcornIcon },
+    { name: "Verify Pickup", path: "/admin/verify-pickup", icon: QrCodeIcon },
   ];
 
   return (

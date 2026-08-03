@@ -14,6 +14,9 @@ import theaterRouter from './routes/theaterRoutes.js';
 import screenRouter from './routes/screenRoutes.js';
 import reviewRouter from './routes/reviewRoutes.js';
 import recommendationRouter from './routes/recommendationRoutes.js';
+import couponRouter from './routes/couponRoutes.js';
+import pricingRuleRouter from './routes/pricingRuleRoutes.js';
+import menuRouter from './routes/menuRoutes.js';
 import { stripeWebhooks } from './controllers/stripeWebhooks.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { logger, httpLogger } from './configs/logger.js';
@@ -52,6 +55,9 @@ app.use('/api/theater', theaterRouter);
 app.use('/api/screen', screenRouter);
 app.use('/api/review', reviewRouter);
 app.use('/api/recommendations', recommendationRouter);
+app.use('/api/coupon', couponRouter);
+app.use('/api/pricing-rule', pricingRuleRouter);
+app.use('/api/menu', menuRouter);
 
 // 404 + centralized error handling (must be registered after all routes)
 app.use(notFoundHandler);

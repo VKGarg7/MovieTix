@@ -1,6 +1,8 @@
 import stripe from 'stripe';
 import Booking from '../models/Booking.js';
 import {inngest} from '../inngest/index.js';
+import { awardPoints } from '../utils/loyaltyPoints.js';
+import { grantReferralRewardIfEligible } from '../utils/referrals.js';
 
 export const stripeWebhooks = async (request , response) => {
     const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
@@ -22,12 +24,15 @@ export const stripeWebhooks = async (request , response) => {
                 const session = event.data.object;
                 const {bookingId} = session.metadata;
 
-                await Booking.findByIdAndUpdate(bookingId, {
+                const booking = await Booking.findByIdAndUpdate(bookingId, {
                     isPaid: true,
                     paymentLink: "",
                     paymentIntentId: session.payment_intent,
                     status: 'confirmed'
-                })
+                }, { new: true })
+
+                await awardPoints(booking.user, bookingId, booking.amount);
+                await grantReferralRewardIfEligible(booking.user);
 
                 await inngest.send({
                     name: 'app/show.booked',

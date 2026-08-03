@@ -9,6 +9,7 @@ axios.defaults.baseURL = import.meta.env.VITE_BASE_URL
 
 const SELECTED_CITY_KEY = "movietix_selected_city";
 const SELECTED_THEATER_KEY = "movietix_selected_theater";
+const REFERRAL_CODE_KEY = "movietix_referral_code";
 
 export const AppProvider = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -49,6 +50,16 @@ export const AppProvider = ({ children }) => {
   const { getToken } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const ref = params.get("ref");
+    if (ref) {
+      localStorage.setItem(REFERRAL_CODE_KEY, ref.toUpperCase());
+    }
+  }, [location.search]);
+
+  const getPendingReferralCode = () => localStorage.getItem(REFERRAL_CODE_KEY) || "";
 
   const fetchIsAdmin = async () => {
     try {
@@ -170,6 +181,7 @@ export const AppProvider = ({ children }) => {
     fetchTheaters,
     fetchScreens,
     fetchShowDetails,
+    getPendingReferralCode,
     image_base_url,
     selectedCity,
     setSelectedCity,

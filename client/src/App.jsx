@@ -16,6 +16,10 @@ import Dashboard from './pages/admin/Dashboard'
 import AddShows from './pages/admin/AddShows'
 import ListShows from './pages/admin/ListShows'
 import ListBookings from './pages/admin/ListBookings'
+import Coupons from './pages/admin/Coupons'
+import PricingRules from './pages/admin/PricingRules'
+import MenuItems from './pages/admin/MenuItems'
+import VerifyPickup from './pages/admin/VerifyPickup'
 import { useAppContext } from './context/useAppContext'
 import { SignIn } from '@clerk/clerk-react'
 import Loading from './components/Loading'
@@ -57,6 +61,10 @@ const App = () => {
           <Route path='add-shows' element={<AddShows/>}/>
           <Route path='list-shows' element={<ListShows/>}/>
           <Route path='list-bookings' element={<ListBookings/>}/>
+          <Route path='coupons' element={<Coupons/>}/>
+          <Route path='pricing-rules' element={<PricingRules/>}/>
+          <Route path='menu-items' element={<MenuItems/>}/>
+          <Route path='verify-pickup' element={<VerifyPickup/>}/>
         </Route>
 
       </Routes>
