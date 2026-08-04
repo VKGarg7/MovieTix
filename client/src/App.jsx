@@ -24,6 +24,8 @@ import Coupons from './pages/admin/Coupons'
 import PricingRules from './pages/admin/PricingRules'
 import MenuItems from './pages/admin/MenuItems'
 import VerifyPickup from './pages/admin/VerifyPickup'
+import ManageTheaters from './pages/admin/ManageTheaters'
+import AuditLog from './pages/admin/AuditLog'
 import { useAppContext } from './context/useAppContext'
 import { SignIn } from '@clerk/clerk-react'
 import Loading from './components/Loading'
@@ -73,6 +75,8 @@ const App = () => {
           <Route path='pricing-rules' element={<PricingRules/>}/>
           <Route path='menu-items' element={<MenuItems/>}/>
           <Route path='verify-pickup' element={<VerifyPickup/>}/>
+          <Route path='manage-theaters' element={<ManageTheaters/>}/>
+          <Route path='audit-log' element={<AuditLog/>}/>
         </Route>
 
       </Routes>

@@ -1,26 +1,35 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
+import { DownloadIcon } from 'lucide-react';
 import Loading from '../../components/Loading';
 import Title from '../../components/admin/Title';
 import PaginationControls from '../../components/admin/PaginationControls';
+import DateRangePicker from '../../components/admin/DateRangePicker';
 import { dateFormat } from "../../lib/dateFomat";
 import { useAppContext } from '../../context/useAppContext';
+import useFetchOnUser from '../../hooks/useFetchOnUser';
+import useCsvExport from '../../hooks/useCsvExport';
+import { defaultDateRange } from '../../lib/dateRange';
 
 const ListBookings = () => {
 
-  const {axios , getToken , user} = useAppContext();
+  const {axios , user} = useAppContext();
 
-  const currency = import.meta.env.VITE_CURRENCY 
+  const currency = import.meta.env.VITE_CURRENCY
 
   const [bookings , setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [range, setRange] = useState(defaultDateRange);
+  const { exporting, exportCsv } = useCsvExport(
+    "/api/admin/export-bookings",
+    () => `bookings-${range.from}-to-${range.to}.csv`
+  );
 
   const getAllBookings = async (targetPage) => {
     try {
       const {data} = await axios.get("/api/admin/all-bookings", {
         params: { page: targetPage },
-        headers: {Authorization: `Bearer ${await getToken()}` },
       });
       setBookings(data.bookings);
       setTotalPages(data.pageInfo?.totalPages || 1);
@@ -30,18 +39,32 @@ const ListBookings = () => {
     setIsLoading(false);
   };
 
-  useEffect(() => {
-    if(user){
-      getAllBookings(page);
-    }
-    // only re-run when the user or page changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[user, page]);
+  useFetchOnUser(user, () => getAllBookings(page), [page]);
+
+  const handleExportCsv = () => exportCsv({ from: range.from, to: range.to });
 
   return !isLoading ? (
     <>
      <Title text1="List" text2="Bookings"/>
-     <div className='max-w-4xl mt-6 overflow-x-auto'>
+
+     <div className="flex flex-wrap items-end justify-between gap-4 mt-6 max-w-4xl">
+       <DateRangePicker
+         from={range.from}
+         to={range.to}
+         onChange={({ from, to }) => setRange((prev) => ({ from: from || prev.from, to: to || prev.to }))}
+       />
+       <button
+         type="button"
+         onClick={handleExportCsv}
+         disabled={exporting}
+         className="flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary-dull transition rounded-md text-sm font-medium disabled:opacity-50"
+       >
+         <DownloadIcon className="w-4 h-4" />
+         {exporting ? "Exporting…" : "Export CSV"}
+       </button>
+     </div>
+
+     <div className='max-w-4xl mt-4 overflow-x-auto'>
       <table className='w-full border-collapse rounded-md overflow-hidden text-nowrap'> 
         
         <thead>

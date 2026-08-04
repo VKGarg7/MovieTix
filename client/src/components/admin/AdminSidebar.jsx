@@ -10,9 +10,14 @@ import {
   TrendingUpIcon,
   PopcornIcon,
   QrCodeIcon,
+  BuildingIcon,
+  ScrollTextIcon,
 } from "lucide-react";
+import { useAppContext } from "../../context/useAppContext";
 
 const AdminSidebar = () => {
+  const { adminRole } = useAppContext();
+
   const user = {
     firstName: "Admin",
     lastName: "User",
@@ -32,6 +37,12 @@ const AdminSidebar = () => {
     { name: "Pricing Rules", path: "/admin/pricing-rules", icon: TrendingUpIcon },
     { name: "Menu Items", path: "/admin/menu-items", icon: PopcornIcon },
     { name: "Verify Pickup", path: "/admin/verify-pickup", icon: QrCodeIcon },
+    ...(adminRole === "superAdmin"
+      ? [
+          { name: "Manage Theaters", path: "/admin/manage-theaters", icon: BuildingIcon },
+          { name: "Audit Log", path: "/admin/audit-log", icon: ScrollTextIcon },
+        ]
+      : []),
   ];
 
   return (

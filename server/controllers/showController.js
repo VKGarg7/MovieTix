@@ -16,6 +16,8 @@ import tmdb from '../utils/tmdbClient.js';
 import { bookableShowFilter, getBookableMovieIds } from '../utils/showQueries.js';
 import { getGenreNames } from '../utils/movieGenres.js';
 import { fetchApplicableRules, computeShowPrice } from '../utils/dynamicPricing.js';
+import { getShowtimeSuggestions } from '../utils/showtimeSuggestions.js';
+import { recordAudit } from '../utils/auditLog.js';
 
 
 export const getNowPlayingMovies = asyncHandler(async (req, res) => {
@@ -188,8 +190,9 @@ export const addShow = asyncHandler(async (req, res) => {
         });
     });
 
+    let insertedShows = [];
     if (showsToCreate.length > 0) {
-        await Show.insertMany(showsToCreate);
+        insertedShows = await Show.insertMany(showsToCreate);
     }
 
     if (isFirstShowForMovie && showsToCreate.length > 0) {
@@ -199,8 +202,67 @@ export const addShow = asyncHandler(async (req, res) => {
         })
     }
 
+    if (insertedShows.length > 0) {
+        await recordAudit({
+            req,
+            action: 'create',
+            entityType: 'Show',
+            entityId: insertedShows[0]._id,
+            diff: {
+                after: {
+                    movieId,
+                    screenId,
+                    showPrice,
+                    showsCreated: insertedShows.length,
+                    showIds: insertedShows.map(s => s._id.toString()),
+                    showDateTimes: insertedShows.map(s => s.showDateTime),
+                },
+            },
+        });
+    }
+
     req.log.info({ movieId, showsCreated: showsToCreate.length }, 'Show added');
     res.json({ success: true, message: 'Show Added successfully.' });
+});
+
+
+export const suggestShowtimes = asyncHandler(async (req, res) => {
+    const { movieId, screenId } = req.query;
+
+    if (!movieId || !screenId) {
+        throw new AppError('movieId and screenId are required', 400, 'INVALID_INPUT');
+    }
+    if (!mongoose.Types.ObjectId.isValid(screenId)) {
+        throw new AppError('Invalid screenId', 400, 'INVALID_INPUT');
+    }
+
+    const screen = await Screen.findById(screenId).populate('theater');
+    if (!screen) {
+        throw new AppError('Screen not found', 404, 'SCREEN_NOT_FOUND');
+    }
+
+    assertScreenBelongsToTheater(screen, req.adminContext);
+
+    let movie = await Movie.findById(movieId);
+    if (!movie) {
+        try {
+            const { data: movieApiData } = await tmdb.get(`/movie/${movieId}`);
+            movie = { genres: movieApiData.genres };
+        } catch (error) {
+            req.log.warn({ err: error, movieId }, 'Could not fetch movie genres from TMDB for suggestions; falling back to theater-wide history');
+            movie = null;
+        }
+    }
+
+    const genreNames = movie ? getGenreNames(movie) : [];
+
+    const suggestions = await getShowtimeSuggestions({
+        theaterId: screen.theater._id,
+        genreNames,
+        timezone: screen.theater.timezone,
+    });
+
+    res.json({ success: true, suggestions });
 });
 
 
@@ -374,6 +436,8 @@ export const editShow = asyncHandler(async (req, res) => {
         throw new AppError('Cannot change the showtime of a show with paid bookings; cancel those bookings first', 409, 'SHOW_HAS_PAID_BOOKINGS');
     }
 
+    const before = { showDateTime: show.showDateTime, showPrice: show.showPrice };
+
     if (showPrice !== undefined) show.showPrice = showPrice;
     if (parsedDateTime) show.showDateTime = parsedDateTime;
     await show.save();
@@ -382,6 +446,14 @@ export const editShow = asyncHandler(async (req, res) => {
         const movie = await Movie.findById(show.movie);
         await invalidatePendingBookings(show, movie?.title ?? 'your movie');
     }
+
+    await recordAudit({
+        req,
+        action: 'update',
+        entityType: 'Show',
+        entityId: show._id,
+        diff: { before, after: { showDateTime: show.showDateTime, showPrice: show.showPrice } },
+    });
 
     req.log.info({ showId }, 'Show updated');
     res.json({ success: true, message: 'Show updated successfully', show });
@@ -402,6 +474,14 @@ export const deleteShow = asyncHandler(async (req, res) => {
 
     show.isCancelled = true;
     await show.save();
+
+    await recordAudit({
+        req,
+        action: 'delete',
+        entityType: 'Show',
+        entityId: show._id,
+        diff: { before: { isCancelled: false }, after: { isCancelled: true } },
+    });
 
     req.log.info({ showId }, 'Show cancelled');
     res.json({ success: true, message: 'Show cancelled successfully' });

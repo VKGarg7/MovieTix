@@ -1,16 +1,23 @@
 import React, { useEffect, useState } from "react";
 import Loading from "../../components/Loading";
 import Title from "../../components/admin/Title";
-import {CheckIcon, DeleteIcon, StarIcon } from "lucide-react";
+import {CheckIcon, DeleteIcon, SparklesIcon, StarIcon } from "lucide-react";
 import { kConverter } from "../../lib/kConverter";
 import { useAppContext } from "../../context/useAppContext";
 import useDebouncedSearch from "../../hooks/useDebouncedSearch";
 import SearchInput from "../../components/SearchInput";
 import toast from "react-hot-toast";
 
+const nextDateForDayOfWeek = (dayOfWeek) => {
+  const date = new Date();
+  const diff = (dayOfWeek - date.getDay() + 7) % 7;
+  date.setDate(date.getDate() + diff);
+  return date.toISOString().slice(0, 10);
+};
+
 const AddShows = () => {
 
-  const {axios , getToken , user , image_base_url , fetchTheaters , fetchScreens} = useAppContext();
+  const {axios , user , image_base_url , fetchTheaters , fetchScreens} = useAppContext();
 
   const currency = import.meta.env.VITE_CURRENCY;
   const [nowPlayingMovies, setNowPlayingMovies] = useState([]);
@@ -29,10 +36,12 @@ const AddShows = () => {
   const [screens, setScreens] = useState([]);
   const [selectedScreen, setSelectedScreen] = useState("");
 
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+
   const fetchNowPlayingMovies = async () => {
     try {
-      const { data } = await axios.get("/api/show/now-playing", {
-        headers: { Authorization: `Bearer ${await getToken()}` }})
+      const { data } = await axios.get("/api/show/now-playing");
         if(data.success) {
           setNowPlayingMovies(data.movies);
         }
@@ -87,7 +96,7 @@ const AddShows = () => {
         showPrice: Number(showPrice)
       }
 
-      const {data} = await axios.post('/api/show/add' , payload , {headers: {Authorization: `Bearer ${await getToken()}`}})
+      const {data} = await axios.post('/api/show/add' , payload)
 
       if(data.success) {
         toast.success(data.message)
@@ -131,7 +140,6 @@ const AddShows = () => {
       try {
         const { data } = await axios.get("/api/show/search", {
           params: { query: searchTerm },
-          headers: { Authorization: `Bearer ${await getToken()}` },
         });
         if (!cancelled && data.success) {
           const normalized = data.movies.map((movie) => ({
@@ -153,7 +161,7 @@ const AddShows = () => {
 
     runSearch();
     return () => { cancelled = true; };
-  }, [searchTerm, axios, getToken]);
+  }, [searchTerm, axios]);
 
   useEffect(() => {
     setSelectedScreen("");
@@ -164,6 +172,44 @@ const AddShows = () => {
     }
   }, [selectedTheater, fetchScreens]);
 
+  useEffect(() => {
+    if (!selectedMovie || !selectedScreen) {
+      setSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchSuggestions = async () => {
+      setSuggestionsLoading(true);
+      try {
+        const { data } = await axios.get("/api/show/suggest-showtimes", {
+          params: { movieId: selectedMovie, screenId: selectedScreen },
+        });
+        if (!cancelled && data.success) {
+          setSuggestions(data.suggestions);
+        }
+      } catch (error) {
+        console.error("Error fetching showtime suggestions:", error);
+        if (!cancelled) setSuggestions([]);
+      }
+      if (!cancelled) setSuggestionsLoading(false);
+    };
+
+    fetchSuggestions();
+    return () => { cancelled = true; };
+  }, [selectedMovie, selectedScreen, axios]);
+
+  const handleAcceptSuggestion = (suggestion) => {
+    const date = nextDateForDayOfWeek(suggestion.dayOfWeek);
+    setDateTimeSelection((prev) => {
+      const times = prev[date] || [];
+      if (times.includes(suggestion.suggestedTime)) return prev;
+      return { ...prev, [date]: [...times, suggestion.suggestedTime] };
+    });
+    setShowPrice(String(suggestion.suggestedPrice));
+    toast.success(`Applied ${suggestion.dayLabel} ${suggestion.suggestedTime} suggestion`);
+  };
 
   return nowPlayingMovies.length > 0 ? (
     <>
@@ -262,6 +308,42 @@ const AddShows = () => {
           </select>
         </div>
       </div>
+
+      {selectedMovie && selectedScreen && (
+        <div className="mt-8">
+          <label className="flex items-center gap-2 text-sm font-medium mb-2">
+            <SparklesIcon className="w-4 h-4 text-primary" />
+            Suggested Showtimes
+          </label>
+
+          {suggestionsLoading ? (
+            <p className="text-gray-400 text-sm">Loading suggestions...</p>
+          ) : suggestions.length === 0 ? (
+            <p className="text-gray-400 text-sm">No suggestions available.</p>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {suggestions.map((s, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => handleAcceptSuggestion(s)}
+                  className="text-left border border-primary/30 hover:border-primary bg-primary/5 hover:bg-primary/10 transition rounded-md px-4 py-3 min-w-48"
+                >
+                  <p className="font-medium">{s.dayLabel} · {s.suggestedTime}</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    {currency}{s.suggestedPrice} suggested price
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {s.basis === 'default'
+                      ? 'No history yet — default suggestion'
+                      : `${s.avgOccupancyPct}% avg occupancy · ${s.confidence} confidence`}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* show price input */}
       <div className="mt-8">

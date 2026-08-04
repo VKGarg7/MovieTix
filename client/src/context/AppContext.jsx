@@ -7,12 +7,22 @@ import { AppContext } from "./appContextObject";
 
 axios.defaults.baseURL = import.meta.env.VITE_BASE_URL
 
+const getTokenRef = { current: null };
+axios.interceptors.request.use(async (config) => {
+  if (getTokenRef.current) {
+    const token = await getTokenRef.current();
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 const SELECTED_CITY_KEY = "movietix_selected_city";
 const SELECTED_THEATER_KEY = "movietix_selected_theater";
 const REFERRAL_CODE_KEY = "movietix_referral_code";
 
 export const AppProvider = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminRole, setAdminRole] = useState(null);
   const [shows, setShows] = useState([]);
   const [favoriteMovies, setFavoriteMovies] = useState([]);
 
@@ -31,7 +41,6 @@ export const AppProvider = ({ children }) => {
     } else {
       localStorage.removeItem(SELECTED_CITY_KEY);
     }
-    // changing city invalidates whichever theater was picked under the old city
     setSelectedTheater(null);
   };
 
@@ -52,6 +61,10 @@ export const AppProvider = ({ children }) => {
   const navigate = useNavigate()
 
   useEffect(() => {
+    getTokenRef.current = user ? getToken : null;
+  }, [user, getToken]);
+
+  useEffect(() => {
     const params = new URLSearchParams(location.search);
     const ref = params.get("ref");
     if (ref) {
@@ -63,12 +76,12 @@ export const AppProvider = ({ children }) => {
 
   const fetchIsAdmin = async () => {
     try {
-      const { data } = await axios.get("/api/admin/is-admin", {
-        headers: { Authorization: `Bearer ${await getToken()}` }})
+      const { data } = await axios.get("/api/admin/is-admin");
       setIsAdmin(data.isAdmin === true);
+      setAdminRole(data.role ?? null);
     } catch {
-      // the server answers 403 for non-admins
       setIsAdmin(false);
+      setAdminRole(null);
       if (location.pathname.startsWith("/admin")) {
         navigate("/")
         toast.error("You are not authorized to access this page.")
@@ -122,7 +135,6 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // theaterId is optional — pass it to filter showtimes to that theater, or omit for all.
   const fetchShowDetails = useCallback(async (movieId, theaterId) => {
     try {
       const { data } = await axios.get(`/api/show/${movieId}`, {
@@ -141,8 +153,7 @@ export const AppProvider = ({ children }) => {
 
   const fetchFavoriteMovies = async () => {
     try {
-      const { data } = await axios.get("/api/user/favorites", {
-        headers: { Authorization: `Bearer ${await getToken()}` }});
+      const { data } = await axios.get("/api/user/favorites");
 
         if (data.success) {
         setFavoriteMovies(data.movies)
@@ -175,6 +186,7 @@ export const AppProvider = ({ children }) => {
     getToken,
     navigate,
     isAdmin,
+    adminRole,
     shows,
     favoriteMovies,
     fetchFavoriteMovies,
