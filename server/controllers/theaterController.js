@@ -3,6 +3,7 @@ import Theater from '../models/Theater.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
 import slugify from '../utils/slugify.js';
+import { recordAudit } from '../utils/auditLog.js';
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -34,6 +35,14 @@ export const createTheater = asyncHandler(async (req, res) => {
         geolocation: { lat, lng },
         contactEmail,
         isActive: isActive ?? true,
+    });
+
+    await recordAudit({
+        req,
+        action: 'create',
+        entityType: 'Theater',
+        entityId: theater._id,
+        diff: { after: theater.toObject() },
     });
 
     res.status(201).json({ success: true, theater });

@@ -5,6 +5,7 @@ import Show from '../models/Show.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
 import { assertScreenBelongsToTheater } from '../utils/theaterScope.js';
+import { recordAudit } from '../utils/auditLog.js';
 
 const SEAT_TYPES = ['regular', 'premium', 'recliner', 'accessible'];
 
@@ -38,7 +39,6 @@ const validateRows = (rows) => {
     return null;
 };
 
-// API to create a screen under a theater (admin only)
 export const createScreen = asyncHandler(async (req, res) => {
     const { theaterId, name, rows } = req.body;
 
@@ -67,10 +67,17 @@ export const createScreen = asyncHandler(async (req, res) => {
 
     const screen = await Screen.create({ theater: theaterId, name, rows: normalizedRows });
 
+    await recordAudit({
+        req,
+        action: 'create',
+        entityType: 'Screen',
+        entityId: screen._id,
+        diff: { after: screen.toObject() },
+    });
+
     res.status(201).json({ success: true, screen });
 });
 
-// API to list screens, optionally filtered by theaterId
 export const getScreens = asyncHandler(async (req, res) => {
     const { theaterId } = req.query;
 
@@ -84,9 +91,6 @@ export const getScreens = asyncHandler(async (req, res) => {
     res.json({ success: true, screens });
 });
 
-// API to update a screen's layout (admin only).
-// Policy: editing rows is blocked once any upcoming show references this screen,
-// since changing seat counts/types would invalidate already-sold seat IDs.
 export const updateScreen = asyncHandler(async (req, res) => {
     const { screenId } = req.params;
     const { name, rows } = req.body;

@@ -4,13 +4,25 @@ import { createMockReq, invokeController } from './helpers/mockReqRes.js';
 import { createTestTheater, createTestScreen, createTestMovie, createTestShow } from './helpers/factories.js';
 
 let Booking, User;
-let isAdmin, getDashboardData, getAllShows, getAllBookings;
+let isAdmin, getDashboardData, getAllShows, getAllBookings, getDashboardAnalytics, exportBookingsCsv;
 
 beforeAll(async () => {
     await startTestDb();
     ({ default: Booking } = await import('../models/Booking.js'));
     ({ default: User } = await import('../models/User.js'));
-    ({ isAdmin, getDashboardData, getAllShows, getAllBookings } = await import('../controllers/adminController.js'));
+    ({ isAdmin, getDashboardData, getAllShows, getAllBookings, getDashboardAnalytics, exportBookingsCsv } = await import('../controllers/adminController.js'));
+});
+
+const invokeStreamingController = (controller, req) => new Promise((resolve, reject) => {
+    const headers = {};
+    let body = '';
+    const res = {
+        setHeader: (name, value) => { headers[name] = value; },
+        write: (chunk) => { body += chunk; },
+        end: () => resolve({ headers, body }),
+    };
+    const next = (err) => reject(err);
+    controller(req, res, next).catch(reject);
 });
 
 afterAll(async () => {
@@ -184,5 +196,160 @@ describe('getDashboardData — theater scoping', () => {
         expect(result.statusCode).toBe(200);
         expect(result.body.dashboardData.activeShowsCount).toBe(15);
         expect(result.body.dashboardData.activeShows).toHaveLength(12);
+    });
+});
+
+describe('getDashboardAnalytics', () => {
+    it('computes revenue trend, top movies, and occupancy via aggregation', async () => {
+        const theaterA = await createTestTheater();
+        const screenA = await createTestScreen(theaterA._id, { rows: [{ label: 'A', seatCount: 10, seatType: 'regular' }] });
+        const movie = await createTestMovie('m1');
+        const show = await createTestShow(movie._id, screenA._id, {
+            showDateTime: new Date(),
+            occupiedSeats: { A1: 'user-1', A2: 'user-1' },
+        });
+
+        await Booking.create({
+            user: 'user-1', show: show._id.toString(), amount: 400,
+            bookedSeats: ['A1', 'A2'], isPaid: true, status: 'confirmed',
+        });
+
+        const req = createMockReq({ userId: 'super-1', adminContext: { role: 'superAdmin', theaterId: null } });
+        const result = await invokeController(getDashboardAnalytics, req);
+
+        expect(result.statusCode).toBe(200);
+        const { revenueTrend, topMovies, occupancyByShow } = result.body.analytics;
+
+        expect(revenueTrend).toHaveLength(1);
+        expect(revenueTrend[0].revenue).toBe(400);
+        expect(revenueTrend[0].bookings).toBe(1);
+
+        expect(topMovies).toHaveLength(1);
+        expect(topMovies[0].revenue).toBe(400);
+        expect(topMovies[0].title).toBe('Movie m1');
+
+        expect(occupancyByShow).toHaveLength(1);
+        expect(occupancyByShow[0].occupiedCount).toBe(2);
+        expect(occupancyByShow[0].totalCapacity).toBe(10);
+        expect(occupancyByShow[0].occupancyPct).toBe(20);
+    });
+
+    it('returns empty arrays, not an error, for a date range with zero bookings', async () => {
+        const req = createMockReq({
+            userId: 'super-1',
+            adminContext: { role: 'superAdmin', theaterId: null },
+            query: { from: '2000-01-01', to: '2000-01-02' },
+        });
+        const result = await invokeController(getDashboardAnalytics, req);
+
+        expect(result.statusCode).toBe(200);
+        expect(result.body.analytics.revenueTrend).toEqual([]);
+        expect(result.body.analytics.topMovies).toEqual([]);
+        expect(result.body.analytics.occupancyByShow).toEqual([]);
+    });
+
+    it('a theaterAdmin only sees analytics for their own theater', async () => {
+        const theaterA = await createTestTheater();
+        const theaterB = await createTestTheater({ name: 'INOX', slug: 'inox-mumbai', city: 'Mumbai', contactEmail: 'inox@example.com' });
+        const screenA = await createTestScreen(theaterA._id);
+        const screenB = await createTestScreen(theaterB._id);
+        const movie = await createTestMovie('m1');
+        const showA = await createTestShow(movie._id, screenA._id, { showDateTime: new Date() });
+        const showB = await createTestShow(movie._id, screenB._id, { showDateTime: new Date() });
+
+        await Booking.create({ user: 'user-1', show: showA._id.toString(), amount: 100, bookedSeats: ['A1'], isPaid: true, status: 'confirmed' });
+        await Booking.create({ user: 'user-1', show: showB._id.toString(), amount: 900, bookedSeats: ['A1'], isPaid: true, status: 'confirmed' });
+
+        const req = createMockReq({
+            userId: 'theater-admin-1',
+            adminContext: { role: 'theaterAdmin', theaterId: theaterA._id.toString() },
+        });
+        const result = await invokeController(getDashboardAnalytics, req);
+
+        expect(result.statusCode).toBe(200);
+        expect(result.body.analytics.revenueTrend[0].revenue).toBe(100);
+        expect(result.body.analytics.occupancyByShow).toHaveLength(1);
+    });
+
+    it('rejects an invalid date range where "from" is after "to"', async () => {
+        const req = createMockReq({
+            userId: 'super-1',
+            adminContext: { role: 'superAdmin', theaterId: null },
+            query: { from: '2026-01-10', to: '2026-01-01' },
+        });
+        const result = await invokeController(getDashboardAnalytics, req);
+
+        expect(result.statusCode).toBe(400);
+    });
+});
+
+describe('exportBookingsCsv', () => {
+    it('streams a CSV with a header row and one row per booking, properly escaping special characters', async () => {
+        const theaterA = await createTestTheater();
+        const screenA = await createTestScreen(theaterA._id);
+        const movie = await createTestMovie('m1', { title: 'Comma, "Quote" Movie' });
+        const show = await createTestShow(movie._id, screenA._id, { showDateTime: new Date('2026-01-15T10:00:00Z') });
+        await User.create({ _id: 'user-1', email: 'a@example.com', name: 'A, B', image: 'x' });
+
+        await Booking.create({
+            user: 'user-1', show: show._id.toString(), amount: 400,
+            bookedSeats: ['A1', 'A2'], isPaid: true, status: 'confirmed',
+            createdAt: new Date('2026-01-15T11:00:00Z'),
+        });
+
+        const req = createMockReq({
+            userId: 'super-1',
+            adminContext: { role: 'superAdmin', theaterId: null },
+            query: { from: '2026-01-01', to: '2026-01-31' },
+        });
+        const result = await invokeStreamingController(exportBookingsCsv, req);
+
+        expect(result.headers['Content-Type']).toContain('text/csv');
+        expect(result.headers['Content-Disposition']).toContain('attachment');
+
+        const lines = result.body.trim().split('\r\n');
+        expect(lines[0]).toBe('Booking ID,User Name,User Email,Movie,Show Time,Seats,Amount,Payment Status,Booked At');
+        expect(lines).toHaveLength(2);
+        expect(lines[1]).toContain('"A, B"');
+        expect(lines[1]).toContain('"Comma, ""Quote"" Movie"');
+        expect(lines[1]).toContain('A1, A2');
+        expect(lines[1]).toContain('400');
+        expect(lines[1]).toContain('confirmed');
+    });
+
+    it('exports only a header row for a date range with zero bookings', async () => {
+        const req = createMockReq({
+            userId: 'super-1',
+            adminContext: { role: 'superAdmin', theaterId: null },
+            query: { from: '2000-01-01', to: '2000-01-02' },
+        });
+        const result = await invokeStreamingController(exportBookingsCsv, req);
+
+        const lines = result.body.trim().split('\r\n');
+        expect(lines).toHaveLength(1);
+    });
+
+    it('a theaterAdmin only exports bookings for their own theater', async () => {
+        const theaterA = await createTestTheater();
+        const theaterB = await createTestTheater({ name: 'INOX', slug: 'inox-mumbai', city: 'Mumbai', contactEmail: 'inox@example.com' });
+        const screenA = await createTestScreen(theaterA._id);
+        const screenB = await createTestScreen(theaterB._id);
+        const movie = await createTestMovie('m1');
+        const showA = await createTestShow(movie._id, screenA._id, { showDateTime: new Date() });
+        const showB = await createTestShow(movie._id, screenB._id, { showDateTime: new Date() });
+        await User.create({ _id: 'user-1', email: 'a@example.com', name: 'A', image: 'x' });
+
+        await Booking.create({ user: 'user-1', show: showA._id.toString(), amount: 100, bookedSeats: ['A1'], isPaid: true, status: 'confirmed' });
+        await Booking.create({ user: 'user-1', show: showB._id.toString(), amount: 900, bookedSeats: ['A1'], isPaid: true, status: 'confirmed' });
+
+        const req = createMockReq({
+            userId: 'theater-admin-1',
+            adminContext: { role: 'theaterAdmin', theaterId: theaterA._id.toString() },
+        });
+        const result = await invokeStreamingController(exportBookingsCsv, req);
+
+        const lines = result.body.trim().split('\r\n');
+        expect(lines).toHaveLength(2);
+        expect(lines[1]).toContain('100');
     });
 });

@@ -1,5 +1,5 @@
 import express from "express"
-import { addShow, deleteShow, editShow, getNowPlayingMovies, getShow, getShows, getSimilarMovies, searchBookableMovies, searchMovies } from "../controllers/showController.js";
+import { addShow, deleteShow, editShow, getNowPlayingMovies, getShow, getShows, getSimilarMovies, searchBookableMovies, searchMovies, suggestShowtimes } from "../controllers/showController.js";
 import { protectAdmin } from "../middleware/auth.js";
 import { publicApiLimiter } from "../middleware/rateLimit.js";
 
@@ -114,6 +114,58 @@ showRouter.get('/search', protectAdmin , searchMovies)
  *         $ref: '#/components/responses/ServerError'
  */
 showRouter.post('/add' , protectAdmin , addShow)
+
+/**
+ * @openapi
+ * /show/suggest-showtimes:
+ *   get:
+ *     summary: Suggest 2-3 showtime/price combinations based on historical occupancy
+ *     tags: [Show]
+ *     security:
+ *       - bearerAuth: []
+ *     description: >
+ *       Auth: admin only, scoped to the screen's own theater. Prefers historical occupancy
+ *       for shows of the same genre at this theater; falls back to theater-wide history when
+ *       there isn't enough genre-specific data, then to fixed defaults when the theater has
+ *       no show history at all.
+ *     parameters:
+ *       - in: query
+ *         name: movieId
+ *         required: true
+ *         schema: { type: string, example: "1234" }
+ *       - in: query
+ *         name: screenId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Suggested showtime/price combinations
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               suggestions:
+ *                 - dayOfWeek: 5
+ *                   dayLabel: Friday
+ *                   slotLabel: Evening
+ *                   suggestedTime: "18:00"
+ *                   avgOccupancyPct: 72.5
+ *                   suggestedPrice: 250
+ *                   sampleSize: 4
+ *                   confidence: high
+ *                   basis: genre-history
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+showRouter.get('/suggest-showtimes' , protectAdmin , suggestShowtimes)
 
 /**
  * @openapi
