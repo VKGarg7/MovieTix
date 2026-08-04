@@ -12,6 +12,7 @@ import {
   QrCodeIcon,
   BuildingIcon,
   ScrollTextIcon,
+  ActivityIcon,
 } from "lucide-react";
 import { useAppContext } from "../../context/useAppContext";
 
@@ -37,6 +38,7 @@ const AdminSidebar = () => {
     { name: "Pricing Rules", path: "/admin/pricing-rules", icon: TrendingUpIcon },
     { name: "Menu Items", path: "/admin/menu-items", icon: PopcornIcon },
     { name: "Verify Pickup", path: "/admin/verify-pickup", icon: QrCodeIcon },
+    { name: "Multiplex Pulse", path: "/admin/multiplex-pulse", icon: ActivityIcon },
     ...(adminRole === "superAdmin"
       ? [
           { name: "Manage Theaters", path: "/admin/manage-theaters", icon: BuildingIcon },

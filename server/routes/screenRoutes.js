@@ -51,6 +51,10 @@ screenRouter.get('/', getScreens);
  *               - { label: "A", seatCount: 9, seatType: "regular" }
  *               - { label: "B", seatCount: 9, seatType: "regular" }
  *               - { label: "C", seatCount: 6, seatType: "premium" }
+ *             viewFromSeat:
+ *               front: "https://example.com/screen1-front.jpg"
+ *               middle: "https://example.com/screen1-middle.jpg"
+ *               back: null
  *     responses:
  *       201:
  *         description: Screen created
@@ -78,7 +82,7 @@ screenRouter.post('/', protectAdmin, requireSuperAdmin, createScreen);
  * @openapi
  * /screen/{screenId}:
  *   patch:
- *     summary: Update a screen's name and/or seat-row layout
+ *     summary: Update a screen's name, seat-row layout, and/or "view from your seat" preview images
  *     tags: [Screen]
  *     security:
  *       - bearerAuth: []
@@ -86,6 +90,8 @@ screenRouter.post('/', protectAdmin, requireSuperAdmin, createScreen);
  *       Auth: admin only (theater-admins may only edit screens belonging to their own theater; 403 otherwise).
  *       Editing rows is blocked (409) if the screen has any upcoming show,
  *       since changing seat counts/types would invalidate already-sold seat IDs.
+ *       viewFromSeat has no such restriction — it's purely informational and can be
+ *       updated anytime; a partial viewFromSeat object merges onto the existing bands.
  *     parameters:
  *       - in: path
  *         name: screenId
@@ -99,6 +105,8 @@ screenRouter.post('/', protectAdmin, requireSuperAdmin, createScreen);
  *             name: "Screen 1 (Renamed)"
  *             rows:
  *               - { label: "A", seatCount: 9, seatType: "regular" }
+ *             viewFromSeat:
+ *               front: "https://example.com/screen1-front.jpg"
  *     responses:
  *       200:
  *         description: Screen updated

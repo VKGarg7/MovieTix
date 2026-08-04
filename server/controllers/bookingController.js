@@ -2,6 +2,7 @@ import Show from '../models/Show.js';
 import Booking from '../models/Booking.js';
 import Movie from '../models/Movie.js';
 import MenuItem from '../models/MenuItem.js';
+import PriceWatch from '../models/PriceWatch.js';
 import stripe from 'stripe';
 import { inngest } from '../inngest/index.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -11,12 +12,15 @@ import { buildBookingIcs } from '../utils/calendarEvent.js';
 import { buildPickupQrPng } from '../utils/qrCode.js';
 import { verifyPickupToken } from '../utils/pickupToken.js';
 import { occupySeatsAtomic, releaseSeatsAndNotifyWaitlist } from '../utils/seatOperations.js';
-import { SCREEN_WITH_THEATER, assertScreenBelongsToTheater } from '../utils/theaterScope.js';
+import { SCREEN_WITH_THEATER, assertScreenBelongsToTheater, resolveTheaterContext } from '../utils/theaterScope.js';
 import { loadOwnedBooking } from '../utils/bookingOwnership.js';
 import { redeemCouponAtomic, releaseCouponAtomic } from './couponController.js';
 import { computeDiscount } from '../utils/couponPricing.js';
 import { fetchApplicableRules, computeShowPrice } from '../utils/dynamicPricing.js';
 import { redeemPointsAtomic, refundRedeemedPoints, reverseEarnedPoints } from '../utils/loyaltyPoints.js';
+import { isMysteryRevealed } from '../utils/mysteryMovie.js';
+import { redeemBingePassCredit, refundBingePassCredit } from './subscriptionController.js';
+import { isShowBingePassEligible } from '../utils/bingePassEligibility.js';
 
 const MAX_SNACK_QUANTITY_PER_ITEM = 10;
 
@@ -56,7 +60,7 @@ export const MAX_SEATS_PER_BOOKING = 5;
 
 export const runBookingCheckout = async ({
     userId, showId, selectedSeats, couponCode, requestedSnacks, redeemPoints, origin,
-    skipSeatLock = false, extraBookingFields = {}, onSeatRollback,
+    skipSeatLock = false, extraBookingFields = {}, onSeatRollback, useBingePassCredit = false,
 }) => {
     const rollbackSeats = onSeatRollback || (seats => releaseSeatsAndNotifyWaitlist(showId, seats));
 
@@ -70,8 +74,7 @@ export const runBookingCheckout = async ({
         throw new AppError('Invalid seat selection', 400, 'INVALID_SEATS');
     }
 
-    const theaterId = showForSeatCheck.screen?.theater?._id ?? showForSeatCheck.screen?.theater;
-    const theaterTimezone = showForSeatCheck.screen?.theater?.timezone;
+    const { theaterId, timezone: theaterTimezone } = resolveTheaterContext(showForSeatCheck);
 
     let showData;
     if (skipSeatLock) {
@@ -109,6 +112,8 @@ export const runBookingCheckout = async ({
     let finalAmount = originalAmount;
     let discountAmount = 0;
     let redeemedCoupon = null;
+    let bingePassCreditAmount = 0;
+    let bingePassUsage = null;
 
     if (couponCode) {
         try {
@@ -139,6 +144,25 @@ export const runBookingCheckout = async ({
         throw error;
     }
 
+    // --- Binge Pass credit redemption ---
+    if (useBingePassCredit) {
+        try {
+            const showEligible = await isShowBingePassEligible(showData, theaterId, theaterTimezone);
+            if (!showEligible) {
+                throw new AppError('This showtime is not eligible for a Binge Pass credit (peak/premium show)', 400, 'BINGE_PASS_NOT_ELIGIBLE');
+            }
+
+            bingePassCreditAmount = Math.min(computedSeatPrice * selectedSeats.length, finalAmount);
+            finalAmount = Math.max(0, finalAmount - bingePassCreditAmount);
+        } catch (error) {
+            await rollbackSeats(selectedSeats);
+            if (redeemedCoupon) {
+                await releaseCouponAtomic(redeemedCoupon.code);
+            }
+            throw error;
+        }
+    }
+
     const booking = await Booking.create({
         user: userId,
         show: showId,
@@ -149,8 +173,25 @@ export const runBookingCheckout = async ({
         bookedSeats: selectedSeats,
         snacks,
         snacksAmount,
+        bingePassCreditUsed: useBingePassCredit,
+        bingePassCreditAmount,
         ...extraBookingFields,
     })
+
+    if (useBingePassCredit) {
+        try {
+            bingePassUsage = await redeemBingePassCredit({ userId, bookingId: booking._id, showId });
+        } catch (error) {
+            await rollbackSeats(selectedSeats);
+            if (redeemedCoupon) {
+                await releaseCouponAtomic(redeemedCoupon.code);
+            }
+            await Booking.findByIdAndDelete(booking._id);
+            throw error;
+        }
+    }
+
+    await PriceWatch.deleteOne({ user: userId, show: showId, status: 'active' });
 
     let pointsDiscountAmount = 0;
     if (redeemPoints) {
@@ -183,19 +224,43 @@ export const runBookingCheckout = async ({
         await booking.save();
     }
 
+    // If the Binge Pass credit fully covers the ticket and there are no snacks,
+    // the booking is free — mark it paid immediately without a Stripe session.
+    if (useBingePassCredit && finalAmount <= 0 && snacksAmount === 0) {
+        booking.isPaid = true;
+        booking.status = 'confirmed';
+        booking.paymentLink = "";
+        await booking.save();
+
+        await inngest.send({
+            name: 'app/show.booked',
+            data: { bookingId: booking._id.toString() }
+        });
+
+        return { booking, session: null };
+    }
+
     try {
         const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
 
-        const line_items = [{
-            price_data: {
-                currency: 'usd',
-                product_data: {
-                    name: showData.movie.title
+        const lineItemName = showData.isMysteryMovie
+            ? 'Mystery Movie Ticket'
+            : showData.movie.title;
+
+        const line_items = [];
+
+        if (finalAmount > 0) {
+            line_items.push({
+                price_data: {
+                    currency: 'usd',
+                    product_data: {
+                        name: lineItemName
+                    },
+                    unit_amount: Math.round(finalAmount * 100)
                 },
-                unit_amount: Math.round(finalAmount * 100)
-            },
-            quantity: 1
-        }]
+                quantity: 1
+            });
+        }
 
         for (const snack of snacks) {
             line_items.push({
@@ -239,6 +304,9 @@ export const runBookingCheckout = async ({
         if (pointsDiscountAmount > 0) {
             await refundRedeemedPoints(userId, booking._id.toString());
         }
+        if (bingePassUsage) {
+            await refundBingePassCredit({ userId, bookingId: booking._id });
+        }
         await Booking.findByIdAndDelete(booking._id);
         throw error;
     }
@@ -246,7 +314,7 @@ export const runBookingCheckout = async ({
 
 export const createBooking = asyncHandler(async(req , res)=> {
     const {userId} = req.auth();
-    const {showId , selectedSeats, couponCode, snacks: requestedSnacks, redeemPoints} = req.body;
+    const {showId , selectedSeats, couponCode, snacks: requestedSnacks, redeemPoints, useBingePassCredit} = req.body;
     const {origin} =  req.headers;
 
     if (!showId || !Array.isArray(selectedSeats) || selectedSeats.length === 0) {
@@ -258,13 +326,16 @@ export const createBooking = asyncHandler(async(req , res)=> {
     if (redeemPoints !== undefined && (!Number.isInteger(redeemPoints) || redeemPoints <= 0)) {
         throw new AppError('redeemPoints must be a positive integer', 400, 'INVALID_INPUT');
     }
+    if (useBingePassCredit !== undefined && typeof useBingePassCredit !== 'boolean') {
+        throw new AppError('useBingePassCredit must be a boolean', 400, 'INVALID_INPUT');
+    }
 
     const { booking, session } = await runBookingCheckout({
-        userId, showId, selectedSeats, couponCode, requestedSnacks, redeemPoints, origin,
+        userId, showId, selectedSeats, couponCode, requestedSnacks, redeemPoints, origin, useBingePassCredit,
     });
 
     req.log.info({ bookingId: booking._id.toString(), showId, userId }, 'Booking created, checkout session started');
-    res.json({success: true, url: session.url});
+    res.json({success: true, url: session?.url || null, isPaid: booking.isPaid});
 });
 
 
@@ -355,9 +426,12 @@ export const getBookingCalendar = asyncHandler(async(req, res) => {
         throw new AppError('Movie not found', 404, 'MOVIE_NOT_FOUND');
     }
 
+    const revealed = isMysteryRevealed(show, { isPaid: booking.isPaid });
+    const movieTitle = revealed ? movie.title : 'Mystery Movie';
+
     const icsContent = buildBookingIcs({
-        movieTitle: movie.title,
-        runtimeMinutes: movie.runtime,
+        movieTitle,
+        runtimeMinutes: revealed ? movie.runtime : null,
         showDateTime: show.showDateTime,
         theater: show.screen?.theater,
         bookingId: booking._id.toString(),
@@ -365,7 +439,7 @@ export const getBookingCalendar = asyncHandler(async(req, res) => {
 
     res.set({
         'Content-Type': 'text/calendar; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${movie.title.replace(/[^a-z0-9]/gi, '_')}.ics"`,
+        'Content-Disposition': `attachment; filename="${movieTitle.replace(/[^a-z0-9]/gi, '_')}.ics"`,
     });
     res.send(icsContent);
 });
@@ -383,7 +457,7 @@ export const cancelBooking = asyncHandler(async(req, res) => {
     if (booking.status === 'pending-cancellation') {
         throw new AppError('Booking cancellation is already being processed, please contact support', 409, 'CANCELLATION_PENDING');
     }
-    if (!booking.isPaid || !booking.paymentIntentId) {
+    if (!booking.isPaid) {
         throw new AppError('Only paid bookings can be cancelled', 400, 'BOOKING_NOT_PAID');
     }
 
@@ -401,8 +475,10 @@ export const cancelBooking = asyncHandler(async(req, res) => {
     await releaseSeatsAndNotifyWaitlist(booking.show, booking.bookedSeats);
 
     try {
-        const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
-        await stripeInstance.refunds.create({ payment_intent: booking.paymentIntentId });
+        if (booking.paymentIntentId) {
+            const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
+            await stripeInstance.refunds.create({ payment_intent: booking.paymentIntentId });
+        }
 
         booking.status = 'cancelled';
         booking.isPaid = false;
@@ -414,6 +490,9 @@ export const cancelBooking = asyncHandler(async(req, res) => {
         await reverseEarnedPoints(userId, bookingId);
         if (booking.pointsRedeemed > 0) {
             await refundRedeemedPoints(userId, bookingId);
+        }
+        if (booking.bingePassCreditUsed) {
+            await refundBingePassCredit({ userId, bookingId });
         }
 
         req.log.info({ bookingId, userId }, 'Booking cancelled and refunded');

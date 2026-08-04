@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { EyeOffIcon } from "lucide-react";
 import Loading from "../components/Loading";
 import BlurCircle from "../components/BlurCircle";
 import timeFormat from "../lib/timeFormat";
@@ -8,6 +9,7 @@ import { Link, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import useFetchOnUser from "../hooks/useFetchOnUser";
 import useScrollToHash from "../hooks/useScrollToHash";
+import BingePass from "../components/BingePass";
 
 const CANCELLATION_CUTOFF_HOURS = 2;
 const TABS = ["Upcoming", "Completed", "Cancelled"];
@@ -313,6 +315,8 @@ const MyBookings = () => {
 
       <h1 className="text-lg font-semibold mb-4">My Bookings</h1>
 
+      <BingePass />
+
       <div className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-lg mb-4 p-4 max-w-3xl">
         <div>
           <p className="text-sm text-gray-400">Loyalty points balance</p>
@@ -473,23 +477,45 @@ const MyBookings = () => {
           {/* Displaying booking details */}
           <div className="flex flex-col md:flex-row">
             {item.show?.movie ? (
-              <>
-                <img
-                  src={image_base_url + item.show.movie.poster_path}
-                  alt=""
-                  className="md:max-w-45 aspect-video h-auto object-cover object-bottom rounded"
-                />
+              item.show.movie.isMysteryMovie ? (
+                <>
+                  <div className="md:max-w-45 md:w-45 aspect-video h-auto bg-gradient-to-br from-primary/30 to-gray-900 rounded flex flex-col items-center justify-center gap-1">
+                    <EyeOffIcon className="w-8 h-8 text-primary" />
+                    <p className="text-xs">Mystery Movie</p>
+                  </div>
 
-                <div className="flex flex-col p-4">
-                  <p className="text-lg font-semibold">{item.show.movie.title}</p>
-                  <p className="text-gray-400 text-sm">
-                    {timeFormat(item.show.movie.runtime)}
-                  </p>
-                  <p className="text-gray-400 text-sm mt-auto">
-                    {dateFormat(item.show.showDateTime)}
-                  </p>
-                </div>
-              </>
+                  <div className="flex flex-col p-4">
+                    <p className="text-lg font-semibold">Mystery Movie</p>
+                    <p className="text-gray-400 text-sm">
+                      {item.show.movie.genres?.map((g) => g.name).join(", ")} &middot; {item.show.movie.ratingBand}
+                    </p>
+                    <p className="text-gray-400 text-xs mt-1">
+                      Revealed at the theater — your ticket won't show the title.
+                    </p>
+                    <p className="text-gray-400 text-sm mt-auto">
+                      {dateFormat(item.show.showDateTime)}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <img
+                    src={image_base_url + item.show.movie.poster_path}
+                    alt=""
+                    className="md:max-w-45 aspect-video h-auto object-cover object-bottom rounded"
+                  />
+
+                  <div className="flex flex-col p-4">
+                    <p className="text-lg font-semibold">{item.show.movie.title}</p>
+                    <p className="text-gray-400 text-sm">
+                      {timeFormat(item.show.movie.runtime)}
+                    </p>
+                    <p className="text-gray-400 text-sm mt-auto">
+                      {dateFormat(item.show.showDateTime)}
+                    </p>
+                  </div>
+                </>
+              )
             ) : (
               <div className="flex flex-col p-4">
                 <p className="text-lg font-semibold text-gray-400">Show no longer available</p>

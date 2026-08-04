@@ -57,3 +57,9 @@ export const groupStatusPollingLimiter = buildLimiter({
     max: toInt(process.env.RATE_LIMIT_GROUP_STATUS_MAX, 30),
     message: 'Too many group-booking status requests, please slow down.'
 });
+
+export const showtimePollLimiter = buildLimiter({
+    windowMs: minutes(toInt(process.env.RATE_LIMIT_SHOWTIME_POLL_WINDOW_MIN, 1)),
+    max: toInt(process.env.RATE_LIMIT_SHOWTIME_POLL_MAX, 30),
+    message: 'Too many showtime-poll requests, please slow down.'
+});

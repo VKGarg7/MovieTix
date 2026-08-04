@@ -1,4 +1,4 @@
-import { StarIcon } from "lucide-react";
+import { StarIcon, EyeOffIcon } from "lucide-react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import timeFormat from "../lib/timeFormat";
@@ -8,22 +8,40 @@ const MovieCard = ({movie}) => {
   const Navigate = useNavigate();
   const {image_base_url} = useAppContext();
 
+  const isMystery = movie.isMysteryMovie;
+
   return (
     <div className="flex flex-col justify-between p-3 bg-gray-800 rounded-2xl hover:translate-y-1 transition duration-300 w-66">
-      <img
-        onClick={() => {
-          Navigate(`/movies/${movie._id}`);
-          scrollTo(0, 0);
-        }}
-        src={image_base_url + movie.backdrop_path}
-        alt=""
-        className="rounded-lg h-52 w-full object-cover object-right-bottom cursor-pointer"
-      />
+      {isMystery ? (
+        <div
+          onClick={() => {
+            Navigate(`/movies/${movie._id}`);
+            scrollTo(0, 0);
+          }}
+          className="rounded-lg h-52 w-full bg-gradient-to-br from-primary/30 to-gray-900 flex flex-col items-center justify-center gap-2 cursor-pointer"
+        >
+          <EyeOffIcon className="w-10 h-10 text-primary" />
+          <p className="text-sm font-medium">Mystery Movie</p>
+        </div>
+      ) : (
+        <img
+          onClick={() => {
+            Navigate(`/movies/${movie._id}`);
+            scrollTo(0, 0);
+          }}
+          src={image_base_url + movie.backdrop_path}
+          alt=""
+          className="rounded-lg h-52 w-full object-cover object-right-bottom cursor-pointer"
+        />
+      )}
 
-      <p className="font-semibold mt-2 truncate">{movie.title}</p>
+      <p className="font-semibold mt-2 truncate">{isMystery ? "Mystery Movie" : movie.title}</p>
 
       <p className="text-sm text-gray-400 mt-2">
-        {new Date(movie.release_date).getFullYear()} .{" "}
+        {isMystery
+          ? movie.ratingBand
+          : new Date(movie.release_date).getFullYear()}{" "}
+        .{" "}
         {movie.genres
           .slice(0, 2)
           .map((genre) => genre.name)
@@ -42,10 +60,12 @@ const MovieCard = ({movie}) => {
           Buy Tickets
         </button>
 
-        <p className="flex items-center gap-1 text-sm text-gray-400 mt-1 pr-1">
-          <StarIcon className="w-4 h-4 text-primary fill-primary" />
-          {movie.vote_average.toFixed(1)}
-        </p>
+        {!isMystery && (
+          <p className="flex items-center gap-1 text-sm text-gray-400 mt-1 pr-1">
+            <StarIcon className="w-4 h-4 text-primary fill-primary" />
+            {movie.vote_average.toFixed(1)}
+          </p>
+        )}
       </div>
     </div>
   );

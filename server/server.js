@@ -9,6 +9,8 @@ import { inngest, functions } from "./inngest/index.js"
 import showRouter from './routes/showRoutes.js';
 import bookingRouter from './routes/bookingRoutes.js';
 import groupBookingRouter from './routes/groupBookingRoutes.js';
+import showtimePollRouter from './routes/showtimePollRoutes.js';
+import priceWatchRouter from './routes/priceWatchRoutes.js';
 import waitlistRouter from './routes/waitlistRoutes.js';
 import adminRouter from './routes/adminRoutes.js';
 import userRouter from './routes/userRoutes.js';
@@ -19,6 +21,7 @@ import recommendationRouter from './routes/recommendationRoutes.js';
 import couponRouter from './routes/couponRoutes.js';
 import pricingRuleRouter from './routes/pricingRuleRoutes.js';
 import menuRouter from './routes/menuRoutes.js';
+import subscriptionRouter from './routes/subscriptionRoutes.js';
 import { stripeWebhooks } from './controllers/stripeWebhooks.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { logger, httpLogger } from './configs/logger.js';
@@ -52,6 +55,8 @@ app.use('/api/inngest', serve({ client: inngest, functions }))
 app.use('/api/show', showRouter)
 app.use('/api/booking', bookingRouter);
 app.use('/api/group-booking', groupBookingRouter);
+app.use('/api/showtime-poll', showtimePollRouter);
+app.use('/api/price-watch', priceWatchRouter);
 app.use('/api/waitlist', waitlistRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/user', userRouter);
@@ -62,6 +67,7 @@ app.use('/api/recommendations', recommendationRouter);
 app.use('/api/coupon', couponRouter);
 app.use('/api/pricing-rule', pricingRuleRouter);
 app.use('/api/menu', menuRouter);
+app.use('/api/subscription', subscriptionRouter);
 
 // 404 + centralized error handling (must be registered after all routes)
 app.use(notFoundHandler);

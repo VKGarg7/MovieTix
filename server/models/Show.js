@@ -8,6 +8,8 @@ const showSchema = new mongoose.Schema(
         showPrice: {type: Number, required: true},
         occupiedSeats: {type: Object, default: {}},
         isCancelled: {type: Boolean, default: false},
+        isMysteryMovie: {type: Boolean, default: false},
+        mysteryRevealAt: {type: String, enum: ['onBooking', 'atTheater'], default: 'onBooking'},
     } , {minimize: false}
 )
 

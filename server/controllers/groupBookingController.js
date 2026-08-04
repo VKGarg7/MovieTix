@@ -18,11 +18,7 @@ const DEFAULT_GROUP_EXPIRY_HOURS = parseInt(process.env.GROUP_BOOKING_DEFAULT_EX
 const MAX_GROUP_EXPIRY_HOURS = parseInt(process.env.GROUP_BOOKING_MAX_EXPIRY_HOURS, 10) || 72;
 
 
-export const createGroupBooking = asyncHandler(async (req, res) => {
-    const { userId } = req.auth();
-    const { showId, seatBlock, expiresInHours, organizerNote } = req.body;
-    const { origin } = req.headers;
-
+export const createGroupBookingForShow = async ({ organizerId, showId, seatBlock, expiresInHours, organizerNote, origin }) => {
     if (!showId || !Array.isArray(seatBlock) || seatBlock.length === 0) {
         throw new AppError('showId and seatBlock are required', 400, 'INVALID_INPUT');
     }
@@ -47,7 +43,7 @@ export const createGroupBooking = asyncHandler(async (req, res) => {
         throw new AppError('Invalid seat selection', 400, 'INVALID_SEATS');
     }
 
-    const showData = await occupySeatsIfFree(showId, seatBlock, userId);
+    const showData = await occupySeatsIfFree(showId, seatBlock, organizerId);
 
     if (!showData) {
         const showExists = await Show.exists({ _id: showId });
@@ -63,7 +59,7 @@ export const createGroupBooking = asyncHandler(async (req, res) => {
     let groupBooking;
     try {
         groupBooking = await GroupBooking.create({
-            organizerId: userId,
+            organizerId,
             show: showId,
             seatBlock,
             expiresAt,
@@ -80,11 +76,27 @@ export const createGroupBooking = asyncHandler(async (req, res) => {
         throw error;
     }
 
+    return {
+        groupBooking,
+        shareUrl: `${origin}/group-booking/${groupBooking._id}`,
+        expiresAt,
+    };
+};
+
+export const createGroupBooking = asyncHandler(async (req, res) => {
+    const { userId } = req.auth();
+    const { showId, seatBlock, expiresInHours, organizerNote } = req.body;
+    const { origin } = req.headers;
+
+    const { groupBooking, shareUrl, expiresAt } = await createGroupBookingForShow({
+        organizerId: userId, showId, seatBlock, expiresInHours, organizerNote, origin,
+    });
+
     req.log.info({ groupBookingId: groupBooking._id.toString(), showId, userId, seatCount: seatBlock.length }, 'Group booking created');
     res.json({
         success: true,
         groupId: groupBooking._id,
-        shareUrl: `${origin}/group-booking/${groupBooking._id}`,
+        shareUrl,
         expiresAt,
     });
 });

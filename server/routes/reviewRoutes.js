@@ -1,5 +1,5 @@
 import express from 'express';
-import { getMovieReviews, getMyReviewForMovie, upsertReview } from '../controllers/reviewController.js';
+import { getMovieReviews, getMyReviewForMovie, getMovieWatchedStatus, upsertReview } from '../controllers/reviewController.js';
 import { protectUser } from '../middleware/auth.js';
 import { publicApiLimiter } from '../middleware/rateLimit.js';
 
@@ -28,6 +28,7 @@ const reviewRouter = express.Router();
  *               movieId: { type: string, example: "1234" }
  *               rating: { type: integer, minimum: 1, maximum: 5, example: 4 }
  *               text: { type: string, example: "Great watch, would recommend." }
+ *               spoiler: { type: boolean, default: false, description: "Self-tag this review as containing spoilers — collapsed by default for users with spoiler-safe mode on who haven't watched the movie." }
  *     responses:
  *       200:
  *         description: Review created/updated
@@ -75,6 +76,37 @@ reviewRouter.post('/', protectUser, upsertReview);
  *         $ref: '#/components/responses/ServerError'
  */
 reviewRouter.get('/me/:movieId', protectUser, getMyReviewForMovie);
+
+/**
+ * @openapi
+ * /review/watched/{movieId}:
+ *   get:
+ *     summary: Check whether the authenticated user has a completed, paid booking for a movie
+ *     tags: [Review]
+ *     security:
+ *       - bearerAuth: []
+ *     description: >
+ *       Auth: signed-in user. Same eligibility rule as review submission — used
+ *       client-side to decide whether spoiler-flagged reviews should auto-reveal.
+ *     parameters:
+ *       - in: path
+ *         name: movieId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Watched status
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               watched: true
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+reviewRouter.get('/watched/:movieId', protectUser, getMovieWatchedStatus);
 
 /**
  * @openapi

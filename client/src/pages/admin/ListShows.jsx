@@ -20,6 +20,7 @@ const ListShows = () => {
   const [savingId, setSavingId] = useState(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [savingMovieId, setSavingMovieId] = useState(null);
 
   const getAllShows = async (targetPage = page) => {
     try{
@@ -77,6 +78,30 @@ const ListShows = () => {
     setSavingId(null);
   };
 
+  const toggleHasPostCreditsScene = async (movieId, current) => {
+    setSavingMovieId(movieId);
+    try {
+      const { data } = await axios.put(
+        `/api/show/movie/${movieId}`,
+        { hasPostCreditsScene: !current },
+        { headers: { Authorization: `Bearer ${await getToken()}` } }
+      );
+      if (data.success) {
+        toast.success('Movie updated');
+        setShows((prev) => prev.map((show) =>
+          show.movie._id === movieId
+            ? { ...show, movie: { ...show.movie, hasPostCreditsScene: !current } }
+            : show
+        ));
+      } else {
+        toast.error(data.message || 'Failed to update movie');
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update movie');
+    }
+    setSavingMovieId(null);
+  };
+
   const handleDelete = async (showId) => {
     setSavingId(showId);
     try {
@@ -106,6 +131,7 @@ const ListShows = () => {
               <th className='p-2 font-medium'>Show Time</th>
               <th className='p-2 font-medium'>Total Bookings</th>
               <th className='p-2 font-medium'>Earnings</th>
+              <th className='p-2 font-medium'>Post-Credits Scene</th>
               <th className='p-2 font-medium'>Actions</th>
             </tr>
           </thead>
@@ -141,6 +167,17 @@ const ListShows = () => {
                     ) : (
                       <>{currency}{Object.keys(show.occupiedSeats).length * show.showPrice}</>
                     )}
+                  </td>
+                  <td className='p-2'>
+                    <label className='flex items-center gap-1.5 cursor-pointer w-max'>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(show.movie.hasPostCreditsScene)}
+                        disabled={savingMovieId === show.movie._id}
+                        onChange={() => toggleHasPostCreditsScene(show.movie._id, Boolean(show.movie.hasPostCreditsScene))}
+                        className='cursor-pointer'
+                      />
+                    </label>
                   </td>
                   <td className='p-2'>
                     {show.isCancelled ? null : editingShow === show._id ? (

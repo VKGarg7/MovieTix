@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import BlurCircle from "../components/BlurCircle";
 import { useAppContext } from "../context/useAppContext";
 import { MapPinIcon, MailIcon } from "lucide-react";
 
 const Theaters = () => {
   const { fetchTheaters, selectedCity } = useAppContext();
+  const navigate = useNavigate();
   const [theaters, setTheaters] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -33,7 +35,8 @@ const Theaters = () => {
         {theaters.map((theater) => (
           <div
             key={theater._id}
-            className="flex flex-col gap-2 w-72 rounded-lg bg-primary/10 border border-primary/20 p-5"
+            onClick={() => navigate(`/theaters/${theater._id}`)}
+            className="flex flex-col gap-2 w-72 rounded-lg bg-primary/10 border border-primary/20 p-5 cursor-pointer hover:-translate-y-1 transition duration-300"
           >
             <h2 className="text-lg font-semibold">{theater.name}</h2>
             <p className="text-sm text-gray-400">{theater.city}</p>

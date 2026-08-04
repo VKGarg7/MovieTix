@@ -19,6 +19,7 @@ axios.interceptors.request.use(async (config) => {
 const SELECTED_CITY_KEY = "movietix_selected_city";
 const SELECTED_THEATER_KEY = "movietix_selected_theater";
 const REFERRAL_CODE_KEY = "movietix_referral_code";
+const SPOILER_SAFE_MODE_KEY = "movietix_spoiler_safe_mode";
 
 export const AppProvider = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -51,6 +52,14 @@ export const AppProvider = ({ children }) => {
     } else {
       localStorage.removeItem(SELECTED_THEATER_KEY);
     }
+  };
+
+  const [spoilerSafeMode, setSpoilerSafeModeState] = useState(
+    () => sessionStorage.getItem(SPOILER_SAFE_MODE_KEY) === "true"
+  );
+  const setSpoilerSafeMode = (enabled) => {
+    setSpoilerSafeModeState(enabled);
+    sessionStorage.setItem(SPOILER_SAFE_MODE_KEY, String(enabled));
   };
 
   const image_base_url = import.meta.env.VITE_TMDB_IMAGE_BASE_URL;
@@ -104,7 +113,6 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // city is optional — pass it to filter server-side, or omit to fetch all theaters.
   const fetchTheaters = useCallback(async (city) => {
     try {
       const { data } = await axios.get("/api/theater", {
@@ -199,6 +207,8 @@ export const AppProvider = ({ children }) => {
     setSelectedCity,
     selectedTheater,
     setSelectedTheater,
+    spoilerSafeMode,
+    setSpoilerSafeMode,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

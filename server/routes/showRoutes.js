@@ -1,5 +1,5 @@
 import express from "express"
-import { addShow, deleteShow, editShow, getNowPlayingMovies, getShow, getShows, getSimilarMovies, searchBookableMovies, searchMovies, suggestShowtimes } from "../controllers/showController.js";
+import { addShow, deleteShow, editMovie, editShow, getNowPlayingMovies, getOccupancyPulse, getShow, getShows, getSimilarMovies, searchBookableMovies, searchMovies, suggestShowtimes } from "../controllers/showController.js";
 import { protectAdmin } from "../middleware/auth.js";
 import { publicApiLimiter } from "../middleware/rateLimit.js";
 
@@ -96,6 +96,12 @@ showRouter.get('/search', protectAdmin , searchMovies)
  *                           items: { type: string }
  *                       example: ["14:00", "18:30"]
  *               showPrice: { type: number, example: 250 }
+ *               isMysteryMovie: { type: boolean, default: false, description: "Flags this as a blind-booking show — listings mask title/poster until reveal." }
+ *               mysteryRevealAt:
+ *                 type: string
+ *                 enum: [onBooking, atTheater]
+ *                 default: onBooking
+ *                 description: Only used when isMysteryMovie is true. 'onBooking' reveals the title once payment succeeds; 'atTheater' never reveals it digitally.
  *     responses:
  *       200:
  *         description: Show(s) added
@@ -188,6 +194,43 @@ showRouter.get('/suggest-showtimes' , protectAdmin , suggestShowtimes)
  *         $ref: '#/components/responses/ServerError'
  */
 showRouter.get('/all' , publicApiLimiter, getShows)
+
+/**
+ * @openapi
+ * /show/occupancy-pulse:
+ *   get:
+ *     summary: Get live occupancy % for every upcoming show at a theater in the next 24 hours
+ *     tags: [Show]
+ *     description: "Auth: none (public). Rate limited per IP. Powers the Multiplex Pulse heatmap."
+ *     parameters:
+ *       - in: query
+ *         name: theaterId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Live occupancy per upcoming show
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               windowHours: 24
+ *               shows:
+ *                 - _id: "abc123"
+ *                   showDateTime: "2026-08-04T18:30:00+05:30"
+ *                   title: "Example Movie"
+ *                   screenName: "Screen 1"
+ *                   totalCapacity: 100
+ *                   occupiedCount: 42
+ *                   occupancyPct: 42
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       429:
+ *         $ref: '#/components/responses/TooManyRequests'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+showRouter.get('/occupancy-pulse', publicApiLimiter, getOccupancyPulse)
 
 /**
  * @openapi
@@ -290,6 +333,8 @@ showRouter.get('/:movieId' , publicApiLimiter, getShow)
  *       Auth: admin only, scoped to the owning theater. Changing showDateTime is blocked
  *       with a 409 if the show has any paid bookings; any pending (unpaid) reservations
  *       are invalidated (seats released, booking deleted, user notified by email).
+ *       Mystery-movie settings (isMysteryMovie/mysteryRevealAt) are likewise blocked
+ *       once the show has any paid bookings.
  *     parameters:
  *       - in: path
  *         name: showId
@@ -303,6 +348,8 @@ showRouter.get('/:movieId' , publicApiLimiter, getShow)
  *             properties:
  *               showDateTime: { type: string, example: "2026-08-01T18:30:00+05:30" }
  *               showPrice: { type: number, example: 300 }
+ *               isMysteryMovie: { type: boolean }
+ *               mysteryRevealAt: { type: string, enum: [onBooking, atTheater] }
  *     responses:
  *       200:
  *         description: Show updated
@@ -363,5 +410,46 @@ showRouter.put('/:showId', protectAdmin, editShow)
  *         $ref: '#/components/responses/ServerError'
  */
 showRouter.delete('/:showId', protectAdmin, deleteShow)
+
+/**
+ * @openapi
+ * /show/movie/{movieId}:
+ *   put:
+ *     summary: Edit curated movie metadata (currently just the post-credits-scene flag)
+ *     tags: [Show]
+ *     security:
+ *       - bearerAuth: []
+ *     description: >
+ *       Auth: admin only. Movies aren't theater-owned, so any admin (theater-admin or
+ *       super-admin) may edit this — it's shared curation data, not per-theater config.
+ *     parameters:
+ *       - in: path
+ *         name: movieId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [hasPostCreditsScene]
+ *             properties:
+ *               hasPostCreditsScene: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Movie updated
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+showRouter.put('/movie/:movieId', protectAdmin, editMovie)
 
 export default showRouter;

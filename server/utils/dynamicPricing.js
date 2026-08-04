@@ -3,12 +3,16 @@ import PricingRule from '../models/PricingRule.js';
 
 const MIN_PRICE_FRACTION = 0.1;
 
+export const timeOfWeekRuleMatches = (rule, showDateTime, timezone) => {
+    const showLocal = DateTime.fromJSDate(showDateTime, { zone: timezone });
+    const hour = showLocal.hour;
+    const weekday = showLocal.weekday % 7;
+    return rule.daysOfWeek.includes(weekday) && hour >= rule.startHour && hour < rule.endHour;
+};
+
 const ruleApplies = (rule, { showDateTime, bookingTime, timezone }) => {
     if (rule.type === 'time_of_week') {
-        const showLocal = DateTime.fromJSDate(showDateTime, { zone: timezone });
-        const hour = showLocal.hour;
-        const weekday = showLocal.weekday % 7;
-        return rule.daysOfWeek.includes(weekday) && hour >= rule.startHour && hour < rule.endHour;
+        return timeOfWeekRuleMatches(rule, showDateTime, timezone);
     }
 
     if (rule.type === 'early_bird') {

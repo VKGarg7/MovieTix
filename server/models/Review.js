@@ -6,6 +6,7 @@ const reviewSchema = new mongoose.Schema(
         movie: { type: String, required: true, ref: 'Movie' },
         rating: { type: Number, required: true, min: 1, max: 5 },
         text: { type: String, default: '' },
+        spoiler: { type: Boolean, default: false },
     },
     { timestamps: true }
 );

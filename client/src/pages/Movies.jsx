@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import MovieCard from "../components/MovieCard";
 import BlurCircle from "../components/BlurCircle";
 import SearchInput from "../components/SearchInput";
@@ -10,12 +11,22 @@ const languageNames = new Intl.DisplayNames(["en"], { type: "language" });
 const Movies = () => {
 
   const {shows, selectedTheater, axios} = useAppContext();
+  const [searchParams] = useSearchParams();
 
   const [searchInput, setSearchInput, searchTerm] = useDebouncedSearch();
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [selectedLanguages, setSelectedLanguages] = useState([]);
   const [tmdbResults, setTmdbResults] = useState([]);
   const [tmdbLoading, setTmdbLoading] = useState(false);
+
+  useEffect(() => {
+    const q = searchParams.get("q");
+    setSearchInput(q || "");
+
+    const genre = searchParams.get("genre");
+    setSelectedGenres(genre ? [genre] : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const genres = useMemo(() => {
     const set = new Set();
@@ -47,7 +58,7 @@ const Movies = () => {
       const matchesSearch = !term || movie.title?.toLowerCase().includes(term);
       const matchesGenre =
         selectedGenres.length === 0 ||
-        movie.genres?.some((g) => selectedGenres.includes(g.name));
+        movie.genres?.some((g) => selectedGenres.some((sg) => sg.toLowerCase() === g.name.toLowerCase()));
       const matchesLanguage =
         selectedLanguages.length === 0 ||
         selectedLanguages.includes(movie.original_language);

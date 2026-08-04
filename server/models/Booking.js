@@ -25,6 +25,9 @@ const bookingSchema = new mongoose.Schema({
     groupBookingId: {type: mongoose.Schema.Types.ObjectId, ref: 'GroupBooking', default: null},
     groupBookingSeats: {type: [String], default: []},
     waitlistEntryId: {type: mongoose.Schema.Types.ObjectId, ref: 'Waitlist', default: null},
+    postCreditsAlertSent: {type: Boolean, default: false},
+    bingePassCreditUsed: {type: Boolean, default: false},
+    bingePassCreditAmount: {type: Number, default: 0},
 } , {timestamps: true});
 
 const Booking = mongoose.model('Booking', bookingSchema);

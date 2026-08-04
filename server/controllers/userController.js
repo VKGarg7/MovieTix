@@ -10,6 +10,7 @@ import AppError from '../utils/AppError.js';
 import { parsePagination, buildPageMeta } from '../utils/pagination.js';
 import { getPointsBalance, POINTS_CONFIG } from '../utils/loyaltyPoints.js';
 import { assignReferralCode } from '../utils/referrals.js';
+import { isMysteryRevealed, maskMovieForMystery } from '../utils/mysteryMovie.js';
 
 const CANCELLED_STATUSES = ['cancelled', 'pending-cancellation'];
 
@@ -74,7 +75,16 @@ export const getUserBookings = asyncHandler(async (req, res) => {
 
     const total = countResult?.total || 0;
 
-    res.json({ success: true, bookings, pageInfo: buildPageMeta(page, limit, total) });
+    const bookingsWithMysteryMasking = bookings.map(booking => {
+        if (!booking.show?.movie || !isMysteryRevealed(booking.show, { isPaid: booking.isPaid })) {
+            return booking.show?.movie
+                ? { ...booking, show: { ...booking.show, movie: maskMovieForMystery(booking.show.movie) } }
+                : booking;
+        }
+        return booking;
+    });
+
+    res.json({ success: true, bookings: bookingsWithMysteryMasking, pageInfo: buildPageMeta(page, limit, total) });
 });
 
 

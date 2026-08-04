@@ -20,12 +20,7 @@ const seatStateLabel = (selected, disabled) => {
   return "available";
 };
 
-// Full keyboard nav: a single roving tabindex across the whole grid (only one
-// seat button is ever in the tab order at a time), arrow keys move focus
-// between seats (including across rows, which may have different lengths —
-// column position is preserved by index, then clamped), Enter/Space selects
-// the focused seat. This replaces the previous mouse-only interaction model.
-const SeatGrid = ({ rows, onSeatClick, seatState }) => {
+const SeatGrid = ({ rows, onSeatClick, seatState, onSeatPreview }) => {
   const seatRows = rows || [];
   const buttonRefs = useRef({});
   const [focusedSeatId, setFocusedSeatId] = useState(null);
@@ -124,7 +119,11 @@ const SeatGrid = ({ rows, onSeatClick, seatState }) => {
                       disabled={disabled}
                       aria-label={`Seat ${seatId}, ${label.toLowerCase()}, ${stateLabel}`}
                       aria-selected={selected}
-                      onFocus={() => setFocusedSeatId(seatId)}
+                      onFocus={() => {
+                        setFocusedSeatId(seatId);
+                        onSeatPreview?.(seatId, row);
+                      }}
+                      onMouseEnter={() => onSeatPreview?.(seatId, row)}
                       onClick={() => !disabled && onSeatClick(seatId)}
                       onKeyDown={(e) => handleKeyDown(e, seatId, disabled)}
                       title={`${seatId} — ${label}`}

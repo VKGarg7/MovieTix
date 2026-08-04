@@ -3,15 +3,22 @@ import Show from '../models/Show.js';
 import Review from '../models/Review.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
+import { isMysteryRevealed } from '../utils/mysteryMovie.js';
 
-const userHasWatchedMovie = async (userId, movieId) => {
-    const showIds = await Show.distinct('_id', { movie: movieId, showDateTime: { $lt: new Date() } });
-    if (showIds.length === 0) return false;
+export const userHasWatchedMovie = async (userId, movieId) => {
+    const shows = await Show.find(
+        { movie: movieId, showDateTime: { $lt: new Date() } },
+        { isMysteryMovie: 1, mysteryRevealAt: 1 }
+    );
+    const revealedShowIds = shows
+        .filter(show => isMysteryRevealed(show, { isPaid: true }))
+        .map(show => show._id.toString());
+    if (revealedShowIds.length === 0) return false;
 
     const booking = await Booking.findOne({
         user: userId,
         isPaid: true,
-        show: { $in: showIds.map(id => id.toString()) },
+        show: { $in: revealedShowIds },
     });
 
     return Boolean(booking);
@@ -19,7 +26,7 @@ const userHasWatchedMovie = async (userId, movieId) => {
 
 export const upsertReview = asyncHandler(async (req, res) => {
     const userId = req.auth().userId;
-    const { movieId, rating, text } = req.body;
+    const { movieId, rating, text, spoiler } = req.body;
 
     if (!movieId || typeof movieId !== 'string') {
         throw new AppError('movieId is required', 400, 'INVALID_INPUT');
@@ -40,7 +47,7 @@ export const upsertReview = asyncHandler(async (req, res) => {
 
     const review = await Review.findOneAndUpdate(
         { user: userId, movie: movieId },
-        { rating: parsedRating, text: typeof text === 'string' ? text : '' },
+        { rating: parsedRating, text: typeof text === 'string' ? text : '', spoiler: Boolean(spoiler) },
         { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
@@ -72,4 +79,12 @@ export const getMyReviewForMovie = asyncHandler(async (req, res) => {
 
     const review = await Review.findOne({ user: userId, movie: movieId });
     res.json({ success: true, review });
+});
+
+export const getMovieWatchedStatus = asyncHandler(async (req, res) => {
+    const userId = req.auth().userId;
+    const { movieId } = req.params;
+
+    const watched = await userHasWatchedMovie(userId, movieId);
+    res.json({ success: true, watched });
 });
