@@ -39,8 +39,31 @@ const validateRows = (rows) => {
     return null;
 };
 
+const VIEW_FROM_SEAT_BANDS = ['front', 'middle', 'back'];
+
+const validateViewFromSeat = (viewFromSeat) => {
+    if (viewFromSeat === undefined) return null;
+    if (typeof viewFromSeat !== 'object' || viewFromSeat === null || Array.isArray(viewFromSeat)) {
+        return 'viewFromSeat must be an object';
+    }
+    for (const band of Object.keys(viewFromSeat)) {
+        if (!VIEW_FROM_SEAT_BANDS.includes(band)) {
+            return `Invalid viewFromSeat band: ${band}. Must be one of ${VIEW_FROM_SEAT_BANDS.join(', ')}`;
+        }
+        const value = viewFromSeat[band];
+        if (value !== null && (typeof value !== 'string' || !value.trim())) {
+            return `viewFromSeat.${band} must be a non-empty URL string or null`;
+        }
+    }
+    return null;
+};
+
+const normalizeViewFromSeat = (viewFromSeat) => Object.fromEntries(
+    VIEW_FROM_SEAT_BANDS.map(band => [band, viewFromSeat?.[band]?.trim() || null])
+);
+
 export const createScreen = asyncHandler(async (req, res) => {
-    const { theaterId, name, rows } = req.body;
+    const { theaterId, name, rows, viewFromSeat } = req.body;
 
     if (!theaterId || !mongoose.Types.ObjectId.isValid(theaterId)) {
         throw new AppError('A valid theaterId is required', 400, 'INVALID_INPUT');
@@ -52,6 +75,10 @@ export const createScreen = asyncHandler(async (req, res) => {
     const rowsError = validateRows(rows);
     if (rowsError) {
         throw new AppError(rowsError, 400, 'INVALID_ROWS');
+    }
+    const viewFromSeatError = validateViewFromSeat(viewFromSeat);
+    if (viewFromSeatError) {
+        throw new AppError(viewFromSeatError, 400, 'INVALID_VIEW_FROM_SEAT');
     }
 
     const theater = await Theater.findById(theaterId);
@@ -65,7 +92,12 @@ export const createScreen = asyncHandler(async (req, res) => {
         seatType: row.seatType || 'regular',
     }));
 
-    const screen = await Screen.create({ theater: theaterId, name, rows: normalizedRows });
+    const screen = await Screen.create({
+        theater: theaterId,
+        name,
+        rows: normalizedRows,
+        viewFromSeat: normalizeViewFromSeat(viewFromSeat),
+    });
 
     await recordAudit({
         req,
@@ -93,7 +125,7 @@ export const getScreens = asyncHandler(async (req, res) => {
 
 export const updateScreen = asyncHandler(async (req, res) => {
     const { screenId } = req.params;
-    const { name, rows } = req.body;
+    const { name, rows, viewFromSeat } = req.body;
 
     const screen = await Screen.findById(screenId);
     if (!screen) {
@@ -126,6 +158,15 @@ export const updateScreen = asyncHandler(async (req, res) => {
 
     if (name !== undefined) {
         screen.name = name;
+    }
+
+    if (viewFromSeat !== undefined) {
+        const viewFromSeatError = validateViewFromSeat(viewFromSeat);
+        if (viewFromSeatError) {
+            throw new AppError(viewFromSeatError, 400, 'INVALID_VIEW_FROM_SEAT');
+        }
+        const existing = screen.viewFromSeat?.toObject ? screen.viewFromSeat.toObject() : (screen.viewFromSeat || {});
+        screen.viewFromSeat = normalizeViewFromSeat({ ...existing, ...viewFromSeat });
     }
 
     await screen.save();

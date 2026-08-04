@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const ENTITY_TYPES = ['Show', 'Theater', 'Screen'];
+const ENTITY_TYPES = ['Show', 'Theater', 'Screen', 'Movie'];
 const ACTIONS = ['create', 'update', 'delete'];
 
 const auditLogSchema = new mongoose.Schema(

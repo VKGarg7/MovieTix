@@ -27,6 +27,12 @@ const emptyTheaterForm = {
 
 const emptyRow = () => ({ label: '', seatCount: '', seatType: 'regular' });
 
+const VIEW_FROM_SEAT_BANDS = [
+  { key: 'front', label: 'Front rows' },
+  { key: 'middle', label: 'Middle rows' },
+  { key: 'back', label: 'Back rows' },
+];
+
 const ManageTheaters = () => {
   const { axios, user, adminRole, fetchTheaters, fetchScreens } = useAppContext();
 
@@ -38,6 +44,7 @@ const ManageTheaters = () => {
   const [screens, setScreens] = useState([]);
   const [screenName, setScreenName] = useState('');
   const [rows, setRows] = useState([emptyRow()]);
+  const [viewFromSeat, setViewFromSeat] = useState({ front: '', middle: '', back: '' });
   const [creatingScreen, setCreatingScreen] = useState(false);
 
   const loadTheaters = async () => {
@@ -109,12 +116,18 @@ const ManageTheaters = () => {
         theaterId: selectedTheaterId,
         name: screenName,
         rows: rows.map(r => ({ label: r.label, seatCount: Number(r.seatCount), seatType: r.seatType })),
+        viewFromSeat: {
+          front: viewFromSeat.front.trim() || null,
+          middle: viewFromSeat.middle.trim() || null,
+          back: viewFromSeat.back.trim() || null,
+        },
       });
 
       if (data.success) {
         toast.success('Screen created');
         setScreenName('');
         setRows([emptyRow()]);
+        setViewFromSeat({ front: '', middle: '', back: '' });
         setScreens(await fetchScreens(selectedTheaterId));
       } else {
         toast.error(data.message);
@@ -264,6 +277,25 @@ const ManageTheaters = () => {
               >
                 <PlusIcon className="w-4 h-4" /> Add row
               </button>
+            </div>
+
+            <p className="text-sm font-medium mt-6 mb-1">"View From Your Seat" preview images (optional)</p>
+            <p className="text-xs text-gray-400 mb-2">
+              A hosted image URL per row-band. Leave blank to skip — the seat map degrades gracefully
+              with a "no preview available" message. For small screens, filling only one band is fine;
+              it's shown for every row.
+            </p>
+            <div className="space-y-2">
+              {VIEW_FROM_SEAT_BANDS.map(({ key, label }) => (
+                <input
+                  key={key}
+                  className={`${ADMIN_INPUT_CLASS} w-full`}
+                  placeholder={`${label} image URL`}
+                  type="url"
+                  value={viewFromSeat[key]}
+                  onChange={(e) => setViewFromSeat((prev) => ({ ...prev, [key]: e.target.value }))}
+                />
+              ))}
             </div>
 
             <button

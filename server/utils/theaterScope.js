@@ -6,6 +6,11 @@ import AppError from './AppError.js';
 
 export const SCREEN_WITH_THEATER = { path: 'screen', populate: { path: 'theater' } };
 
+export const resolveTheaterContext = (show) => ({
+    theaterId: show.screen?.theater?._id ?? show.screen?.theater,
+    timezone: show.screen?.theater?.timezone,
+});
+
 export const getScreenIdsForTheater = async (theaterId) => {
     const screens = await Screen.find({ theater: theaterId }, { _id: 1 });
     return screens.map(s => s._id);

@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { Copy, XCircle } from "lucide-react";
 import Loading from "../components/Loading";
 import BlurCircle from "../components/BlurCircle";
 import { useAppContext } from "../context/useAppContext";
+import usePolling from "../hooks/usePolling";
 
 const POLL_INTERVAL_MS = 6000;
 
@@ -18,42 +19,28 @@ const GroupBookingManage = () => {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
-  const pollRef = useRef(null);
   const shareUrl = `${window.location.origin}/group-booking/${groupId}`;
 
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const { data } = await axios.get(`/api/group-booking/${groupId}/manage`, {
-          headers: { Authorization: `Bearer ${await getToken()}` },
-        });
-        if (!cancelled && data.success) setGroupStatus(data);
-      } catch (error) {
-        if (!cancelled) {
-          const status = error.response?.status;
-          if (status === 403 || status === 404) {
-            toast.error(error.response?.data?.message || "Not authorized to view this group booking");
-            navigate("/");
-          } else {
-            console.log(error);
-          }
+  usePolling(async (isCancelled) => {
+    try {
+      const { data } = await axios.get(`/api/group-booking/${groupId}/manage`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (!isCancelled() && data.success) setGroupStatus(data);
+    } catch (error) {
+      if (!isCancelled()) {
+        const status = error.response?.status;
+        if (status === 403 || status === 404) {
+          toast.error(error.response?.data?.message || "Not authorized to view this group booking");
+          navigate("/");
+        } else {
+          console.log(error);
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
-    };
-
-    poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(pollRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId, user]);
+    } finally {
+      if (!isCancelled()) setLoading(false);
+    }
+  }, POLL_INTERVAL_MS, { enabled: Boolean(user), deps: [groupId, user] });
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(shareUrl);

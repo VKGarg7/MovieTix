@@ -11,6 +11,15 @@ const rowSchema = new mongoose.Schema(
     { _id: false }
 );
 
+const viewFromSeatSchema = new mongoose.Schema(
+    {
+        front: { type: String, default: null },
+        middle: { type: String, default: null },
+        back: { type: String, default: null },
+    },
+    { _id: false }
+);
+
 const screenSchema = new mongoose.Schema(
     {
         theater: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Theater' },
@@ -24,11 +33,11 @@ const screenSchema = new mongoose.Schema(
             },
         },
         totalCapacity: { type: Number, required: true, min: 1 },
+        viewFromSeat: { type: viewFromSeatSchema, default: () => ({}) },
     },
     { timestamps: true }
 );
 
-// Same screen name can't repeat within a theater (e.g. two "Screen 1"s).
 screenSchema.index({ theater: 1, name: 1 }, { unique: true });
 
 screenSchema.pre('validate', function computeTotalCapacity(next) {

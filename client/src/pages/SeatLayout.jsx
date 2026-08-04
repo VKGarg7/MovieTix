@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { assets } from "../assets/assets";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import Loading from "../components/Loading";
 import isoTimeFormat from "../lib/isoTimeFormat";
-import { ArrowRightIcon, ClockIcon, Users } from "lucide-react";
+import { ArrowRightIcon, ClockIcon, Users, Vote, EyeOffIcon, TrendingDownIcon } from "lucide-react";
 import BlurCircle from "../components/BlurCircle";
 import { toast } from "react-hot-toast";
 import { useAppContext } from "../context/useAppContext";
 import SeatGrid, { SeatTypeLegend } from "../components/SeatGrid";
 import PillOptionSelector from "../components/PillOptionSelector";
+import ViewFromSeatPreview from "../components/ViewFromSeatPreview";
 import { findBestAvailableSeats } from "../lib/bestAvailableSeats";
+import { bandForRowIndex, resolveViewFromSeatUrl } from "../lib/viewFromSeat";
 
 const currency = import.meta.env.VITE_CURRENCY;
 const MAX_SEATS_PER_BOOKING = 5;
@@ -17,6 +19,7 @@ const MAX_SEATS_PER_BOOKING = 5;
 const SeatLayout = () => {
   const { id, date } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [selectedTime, setSelectedTime] = useState(null);
   const [show, setShow] = useState(null);
@@ -31,7 +34,19 @@ const SeatLayout = () => {
   const [redeemPointsInput, setRedeemPointsInput] = useState('');
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
   const [joiningWaitlist, setJoiningWaitlist] = useState(false);
-  const [bestSeatCount, setBestSeatCount] = useState(2);
+  const [bestSeatCount, setBestSeatCount] = useState(() => {
+    const seatsParam = searchParams.get("seats");
+    const parsed = seatsParam ? parseInt(seatsParam, 10) : NaN;
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= MAX_SEATS_PER_BOOKING
+      ? parsed
+      : 2;
+  });
+  const [isWatchingPrice, setIsWatchingPrice] = useState(false);
+  const [watchPriceLoading, setWatchPriceLoading] = useState(false);
+  const [watchedPrice, setWatchedPrice] = useState(null);
+  const [previewSeat, setPreviewSeat] = useState(null);
+  const [bingePassEligibility, setBingePassEligibility] = useState(null);
+  const [useBingePassCredit, setUseBingePassCredit] = useState(false);
 
   const {axios , getToken , user , selectedTheater , fetchShowDetails} = useAppContext();
 
@@ -203,6 +218,9 @@ const SeatLayout = () => {
   const pointsDiscount = pointsConfig
     ? Math.min(pointsToRedeem * pointsConfig.redemptionValue, ticketAmountAfterCoupon * pointsConfig.maxRedemptionFractionOfAmount)
     : 0;
+  const bingePassDiscount = useBingePassCredit
+    ? Math.min(ticketAmountAfterCoupon, selectedTime ? selectedTime.computedPrice * selectedSeats.length : 0)
+    : 0;
 
   const applyPoints = () => {
     const requested = parseInt(redeemPointsInput, 10);
@@ -229,11 +247,16 @@ const SeatLayout = () => {
           return toast.error("Please select a time and seats to book");
 
       const {data} = await axios.post('/api/booking/create' ,
-        { showId: selectedTime.showId, selectedSeats, couponCode: appliedCoupon?.code || undefined, snacks: selectedSnacks, redeemPoints: pointsToRedeem || undefined },
+        { showId: selectedTime.showId, selectedSeats, couponCode: appliedCoupon?.code || undefined, snacks: selectedSnacks, redeemPoints: pointsToRedeem || undefined, useBingePassCredit },
         {headers: {Authorization: `Bearer ${await getToken()}`}})
 
       if(data.success){
-        window.location.href = data.url;
+        if (data.isPaid) {
+          toast.success("Booking confirmed with Binge Pass credit!");
+          navigate("/my-bookings");
+        } else if (data.url) {
+          window.location.href = data.url;
+        }
       }else{
         toast.error(data.message);
       }
@@ -258,6 +281,97 @@ const SeatLayout = () => {
     // only re-run when the selected time changes, not on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTime])
+
+  useEffect(() => {
+    if (!show || selectedTime) return;
+    const timeParam = searchParams.get("time");
+    if (!timeParam) return;
+
+    const showtimes = show.dateTime?.[date] || [];
+    const match = showtimes.find((s) => s.showId === timeParam);
+    if (match) {
+      setSelectedTime(match);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show, date, searchParams]);
+
+  const getWatchStatus = async (showId) => {
+    if (!user) { setIsWatchingPrice(false); setWatchedPrice(null); return; }
+    try {
+      const { data } = await axios.get(`/api/price-watch/${showId}`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success) {
+        setIsWatchingPrice(data.watching);
+        setWatchedPrice(data.priceAtWatchTime);
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedTime) getWatchStatus(selectedTime.showId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTime, user]);
+
+  useEffect(() => {
+    if (!selectedTime || !user) {
+      setBingePassEligibility(null);
+      setUseBingePassCredit(false);
+      return;
+    }
+    let cancelled = false;
+    const checkEligibility = async () => {
+      try {
+        const { data } = await axios.get(`/api/subscription/binge-pass/eligibility/${selectedTime.showId}`, {
+          headers: { Authorization: `Bearer ${await getToken()}` },
+        });
+        if (!cancelled && data.success) {
+          setBingePassEligibility(data);
+          if (!data.eligible) setUseBingePassCredit(false);
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    };
+    checkEligibility();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTime, user]);
+
+  const handleToggleWatchPrice = async () => {
+    if (!user) return toast.error("Please login to watch this show's price");
+    if (!selectedTime) return toast("Please select a time first");
+
+    setWatchPriceLoading(true);
+    try {
+      if (isWatchingPrice) {
+        const { data } = await axios.delete(`/api/price-watch/${selectedTime.showId}`, {
+          headers: { Authorization: `Bearer ${await getToken()}` },
+        });
+        if (data.success) {
+          setIsWatchingPrice(false);
+          setWatchedPrice(null);
+          toast.success("Stopped watching this show's price");
+        }
+      } else {
+        const { data } = await axios.post(
+          "/api/price-watch",
+          { showId: selectedTime.showId },
+          { headers: { Authorization: `Bearer ${await getToken()}` } }
+        );
+        if (data.success) {
+          setIsWatchingPrice(true);
+          setWatchedPrice(data.priceAtWatchTime);
+          toast.success("We'll email you if the price drops");
+        }
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to update price watch");
+    }
+    setWatchPriceLoading(false);
+  };
 
   return show ? (
     <div className="flex flex-col md:flex-row px-6 md:px-16 lg:px-40 py-30 md:pt-50">
@@ -286,6 +400,20 @@ const SeatLayout = () => {
             </div>
           ))}
         </div>
+
+        {selectedTime && (
+          <div className="px-6 mt-5">
+            <button
+              onClick={handleToggleWatchPrice}
+              disabled={watchPriceLoading}
+              title={isWatchingPrice ? "Stop watching this show's price" : "Get an email if this show's price drops"}
+              className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full px-3 py-1.5 hover:bg-primary/10 cursor-pointer transition disabled:opacity-50"
+            >
+              <TrendingDownIcon className={`w-3.5 h-3.5 ${isWatchingPrice ? "text-primary" : ""}`} />
+              {isWatchingPrice ? `Watching (${currency}${watchedPrice})` : "Watch Price"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/*seat layout*/}
@@ -294,13 +422,29 @@ const SeatLayout = () => {
         <BlurCircle bottom="0px" right="0px" />
         <h1 className="text-2xl font-semibold mb-4">Select your seat</h1>
 
-        <button
-          onClick={() => navigate(`/movies/${id}/${date}/group-booking`)}
-          className="flex items-center gap-1.5 mb-6 px-4 py-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full hover:bg-primary/10 cursor-pointer transition"
-        >
-          <Users className="w-3.5 h-3.5" />
-          Start a Watch Party instead
-        </button>
+        {show.movie?.isMysteryMovie && (
+          <div className="flex items-center gap-2 mb-4 px-4 py-2 text-xs bg-primary/10 border border-primary/30 rounded-full text-primary">
+            <EyeOffIcon className="w-3.5 h-3.5" />
+            Mystery Movie &middot; {show.movie.genres?.map((g) => g.name).join(", ")} &middot; {show.movie.ratingBand}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
+          <button
+            onClick={() => navigate(`/movies/${id}/${date}/group-booking`)}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full hover:bg-primary/10 cursor-pointer transition"
+          >
+            <Users className="w-3.5 h-3.5" />
+            Start a Watch Party instead
+          </button>
+          <button
+            onClick={() => navigate(`/movies/${id}/showtime-poll`)}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full hover:bg-primary/10 cursor-pointer transition"
+          >
+            <Vote className="w-3.5 h-3.5" />
+            Poll friends on a time first
+          </button>
+        </div>
 
         <img src={assets.screenImage} alt="screen" />
         <p className="text-gray-400 text-sm mb-6">SCREEN SIDE</p>
@@ -347,6 +491,22 @@ const SeatLayout = () => {
                 selected: selectedSeats.includes(seatId),
                 disabled: occupiedSeats.includes(seatId),
               })}
+              onSeatPreview={(seatId) => {
+                const rows = selectedTime?.screen?.rows || [];
+                const rowIndex = rows.findIndex((r) => seatId.startsWith(r.label));
+                if (rowIndex === -1) return;
+                const band = bandForRowIndex(rowIndex, rows.length);
+                setPreviewSeat({
+                  seatId,
+                  imageUrl: resolveViewFromSeatUrl(selectedTime?.screen?.viewFromSeat, band),
+                });
+              }}
+            />
+
+            <ViewFromSeatPreview
+              seatId={previewSeat?.seatId}
+              imageUrl={previewSeat?.imageUrl}
+              onClose={() => setPreviewSeat(null)}
             />
           </>
         )}
@@ -403,13 +563,38 @@ const SeatLayout = () => {
                 <span>-{currency}{pointsDiscount}</span>
               </div>
             )}
+            {bingePassDiscount > 0 && (
+              <div className="flex items-center justify-between text-primary mt-1">
+                <span>Binge Pass credit</span>
+                <span>-{currency}{bingePassDiscount}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between font-semibold mt-1 pt-1 border-t border-primary/20">
               <span>Total</span>
               <span>
                 {currency}
-                {ticketAmountAfterCoupon - pointsDiscount + snacksTotal}
+                {Math.max(0, ticketAmountAfterCoupon - pointsDiscount - bingePassDiscount) + snacksTotal}
               </span>
             </div>
+          </div>
+        )}
+
+        {selectedSeats.length > 0 && bingePassEligibility?.eligible && (
+          <div className="mt-4 w-full max-w-xs">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useBingePassCredit}
+                onChange={(e) => setUseBingePassCredit(e.target.checked)}
+                className="cursor-pointer"
+              />
+              <span>
+                Use a Binge Pass credit
+                <span className="text-gray-400 text-xs ml-1">
+                  ({bingePassEligibility.creditsRemaining} remaining)
+                </span>
+              </span>
+            </label>
           </div>
         )}
 

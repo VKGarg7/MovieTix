@@ -30,6 +30,8 @@ const AddShows = () => {
   const [dateTimeInput, setDateTimeInput] = useState("");
   const [showPrice, setShowPrice] = useState("");
   const [addingShow, setAddingShow] = useState(false);
+  const [isMysteryMovie, setIsMysteryMovie] = useState(false);
+  const [mysteryRevealAt, setMysteryRevealAt] = useState("onBooking");
 
   const [theaters, setTheaters] = useState([]);
   const [selectedTheater, setSelectedTheater] = useState("");
@@ -93,7 +95,9 @@ const AddShows = () => {
         movieId: selectedMovie,
         screenId: selectedScreen,
         showsInput,
-        showPrice: Number(showPrice)
+        showPrice: Number(showPrice),
+        isMysteryMovie,
+        mysteryRevealAt,
       }
 
       const {data} = await axios.post('/api/show/add' , payload)
@@ -105,6 +109,8 @@ const AddShows = () => {
         setSelectedScreen("")
         setDateTimeSelection({})
         setShowPrice("")
+        setIsMysteryMovie(false)
+        setMysteryRevealAt("onBooking")
       }else{
         toast.error(data.message)
       }
@@ -360,6 +366,44 @@ const AddShows = () => {
             className="outline-none"
           />
         </div>
+      </div>
+
+      {/* mystery movie toggle */}
+      <div className="mt-8">
+        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer w-max">
+          <input
+            type="checkbox"
+            checked={isMysteryMovie}
+            onChange={(e) => setIsMysteryMovie(e.target.checked)}
+            className="cursor-pointer"
+          />
+          Mystery Movie show
+        </label>
+        <p className="text-gray-400 text-xs mt-1 max-w-md">
+          Users will only see genre, runtime and rating band until reveal — the title and poster stay hidden.
+        </p>
+
+        {isMysteryMovie && (
+          <div className="mt-3 inline-flex gap-1 border border-gray-600 p-1 rounded-lg">
+            {[
+              { value: "onBooking", label: "Reveal on booking" },
+              { value: "atTheater", label: "Reveal at theater only" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setMysteryRevealAt(option.value)}
+                className={`px-3 py-1.5 text-xs rounded-md cursor-pointer transition ${
+                  mysteryRevealAt === option.value
+                    ? "bg-primary text-white"
+                    : "text-gray-400 hover:bg-primary/10"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* date and time selection */}

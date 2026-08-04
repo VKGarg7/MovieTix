@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { ArrowRightIcon } from "lucide-react";
@@ -7,6 +7,7 @@ import Loading from "../components/Loading";
 import BlurCircle from "../components/BlurCircle";
 import SeatGrid, { SeatTypeLegend } from "../components/SeatGrid";
 import { useAppContext } from "../context/useAppContext";
+import usePolling from "../hooks/usePolling";
 
 const POLL_INTERVAL_MS = 6000;
 const MAX_CLAIM_SEATS = 5;
@@ -20,35 +21,22 @@ const GroupBookingClaim = () => {
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const pollRef = useRef(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const { data } = await axios.get(`/api/group-booking/${groupId}/status`);
-        if (!cancelled && data.success) {
-          setGroupStatus(data);
-          setSelectedSeats((prev) => prev.filter((seat) => {
-            const seatInfo = data.seats.find((s) => s.seat === seat);
-            return seatInfo && !seatInfo.claimed;
-          }));
-        }
-      } catch (error) {
-        console.log(error);
-      } finally {
-        if (!cancelled) setLoading(false);
+  usePolling(async (isCancelled) => {
+    try {
+      const { data } = await axios.get(`/api/group-booking/${groupId}/status`);
+      if (!isCancelled() && data.success) {
+        setGroupStatus(data);
+        setSelectedSeats((prev) => prev.filter((seat) => {
+          const seatInfo = data.seats.find((s) => s.seat === seat);
+          return seatInfo && !seatInfo.claimed;
+        }));
       }
-    };
-
-    poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(pollRef.current);
-    };
-  }, [groupId, axios]);
+    } catch (error) {
+      console.log(error);
+    } finally {
+      if (!isCancelled()) setLoading(false);
+    }
+  }, POLL_INTERVAL_MS, { deps: [groupId, axios] });
 
   const handleSeatClick = (seatId) => {
     const seatInfo = groupStatus.seats.find((s) => s.seat === seatId);

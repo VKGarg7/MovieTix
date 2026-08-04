@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { assets } from "../assets/assets";
-import { MenuIcon, SearchIcon, TicketPlus, Users, Clock, XIcon, MapPinIcon } from "lucide-react";
+import { MenuIcon, SearchIcon, TicketPlus, Users, Clock, XIcon, MapPinIcon, ShieldIcon } from "lucide-react";
 import { useClerk, UserButton, useUser } from "@clerk/clerk-react";
 import { useAppContext } from "../context/useAppContext";
 
@@ -11,7 +11,7 @@ const Navbar = ({ onChangeLocation }) => {
   const { openSignIn } = useClerk()
   const navigate = useNavigate()
 
-  const {favoriteMovies, selectedCity, selectedTheater, getPendingReferralCode} = useAppContext();
+  const {favoriteMovies, selectedCity, selectedTheater, getPendingReferralCode, spoilerSafeMode, setSpoilerSafeMode} = useAppContext();
 
   const handleLogin = () => {
     const referralCode = getPendingReferralCode();
@@ -35,6 +35,15 @@ const Navbar = ({ onChangeLocation }) => {
       </div>
 
       <div className="flex items-center gap-8">
+        <button
+          onClick={() => setSpoilerSafeMode(!spoilerSafeMode)}
+          className={`flex items-center gap-1 text-sm cursor-pointer transition ${spoilerSafeMode ? "text-primary" : "text-gray-300 hover:text-white"}`}
+          title={spoilerSafeMode ? "Spoiler-safe mode is on — click to turn off" : "Turn on spoiler-safe mode"}
+        >
+          <ShieldIcon className={`w-4 h-4 shrink-0 ${spoilerSafeMode ? "fill-primary/30" : ""}`} />
+          <span className="max-md:hidden">Spoiler-safe</span>
+        </button>
+
         <button
           onClick={onChangeLocation}
           className="flex items-center gap-1 text-sm text-gray-300 hover:text-white cursor-pointer max-w-40 truncate"

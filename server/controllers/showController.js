@@ -18,6 +18,7 @@ import { getGenreNames } from '../utils/movieGenres.js';
 import { fetchApplicableRules, computeShowPrice } from '../utils/dynamicPricing.js';
 import { getShowtimeSuggestions } from '../utils/showtimeSuggestions.js';
 import { recordAudit } from '../utils/auditLog.js';
+import { maskMovieForMystery } from '../utils/mysteryMovie.js';
 
 
 export const getNowPlayingMovies = asyncHandler(async (req, res) => {
@@ -106,14 +107,19 @@ export const getSimilarMovies = asyncHandler(async (req, res) => {
 });
 
 
+const MYSTERY_REVEAL_VALUES = ['onBooking', 'atTheater'];
+
 export const addShow = asyncHandler(async (req, res) => {
-    const { movieId, screenId, showsInput, showPrice } = req.body;
+    const { movieId, screenId, showsInput, showPrice, isMysteryMovie, mysteryRevealAt } = req.body;
 
     if (!movieId || !screenId || !Array.isArray(showsInput) || showsInput.length === 0) {
         throw new AppError('movieId, screenId and showsInput are required', 400, 'INVALID_INPUT');
     }
     if (typeof showPrice !== 'number' || !Number.isFinite(showPrice) || showPrice <= 0) {
         throw new AppError('showPrice must be a positive number', 400, 'INVALID_INPUT');
+    }
+    if (mysteryRevealAt !== undefined && !MYSTERY_REVEAL_VALUES.includes(mysteryRevealAt)) {
+        throw new AppError(`mysteryRevealAt must be one of: ${MYSTERY_REVEAL_VALUES.join(', ')}`, 400, 'INVALID_INPUT');
     }
 
     const screen = await Screen.findById(screenId).populate('theater');
@@ -185,7 +191,9 @@ export const addShow = asyncHandler(async (req, res) => {
                 screen: screenId,
                 showDateTime,
                 showPrice,
-                occupiedSeats: {}
+                occupiedSeats: {},
+                isMysteryMovie: Boolean(isMysteryMovie),
+                mysteryRevealAt: mysteryRevealAt || 'onBooking',
             });
         });
     });
@@ -286,7 +294,7 @@ export const getShows = asyncHandler(async (req, res) => {
     }
 
     pipeline.push(
-        { $group: { _id: '$movie', earliestShow: { $min: '$showDateTime' } } },
+        { $group: { _id: '$movie', earliestShow: { $min: '$showDateTime' }, allMysteryUnrevealed: { $min: '$isMysteryMovie' } } },
         { $sort: { earliestShow: 1 } }
     );
 
@@ -296,7 +304,11 @@ export const getShows = asyncHandler(async (req, res) => {
     const movieById = new Map(movies.map(movie => [movie._id.toString(), movie]));
 
     const orderedMovies = movieOrder
-        .map(({ _id }) => movieById.get(_id.toString()))
+        .map(({ _id, allMysteryUnrevealed }) => {
+            const movie = movieById.get(_id.toString());
+            if (!movie) return null;
+            return allMysteryUnrevealed ? maskMovieForMystery(movie) : movie;
+        })
         .filter(Boolean);
 
     res.json({ success: true, shows: orderedMovies });
@@ -340,6 +352,7 @@ export const getShow = asyncHandler(async (req, res) => {
     };
 
     const dateTime = {};
+    let allShownMysteryUnrevealed = shows.length > 0;
 
     for (const show of shows) {
         const rules = await getRulesFor(show.screen.theater._id);
@@ -354,6 +367,7 @@ export const getShow = asyncHandler(async (req, res) => {
         }
 
         const { occupiedCount, totalCapacity, isSoldOut } = getSeatCapacityInfo(show);
+        if (!show.isMysteryMovie) allShownMysteryUnrevealed = false;
 
         dateTime[date].push({
             time: show.showDateTime,
@@ -364,12 +378,102 @@ export const getShow = asyncHandler(async (req, res) => {
             occupiedCount,
             totalCapacity,
             isSoldOut,
+            isMysteryMovie: show.isMysteryMovie,
+            mysteryRevealAt: show.mysteryRevealAt,
         })
     }
 
-    res.json({ success: true, movie, dateTime })
+    const responseMovie = allShownMysteryUnrevealed ? maskMovieForMystery(movie) : movie;
+
+    res.json({ success: true, movie: responseMovie, dateTime })
 });
 
+
+const OCCUPANCY_PULSE_WINDOW_HOURS = 24;
+
+const buildOccupancyPulse = async (theaterId) => {
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + OCCUPANCY_PULSE_WINDOW_HOURS * 60 * 60 * 1000);
+
+    const pipeline = [
+        {
+            $match: {
+                showDateTime: { $gte: now, $lte: windowEnd },
+                isCancelled: { $ne: true },
+            },
+        },
+        { $lookup: { from: 'screens', localField: 'screen', foreignField: '_id', as: 'screenDoc' } },
+        { $unwind: '$screenDoc' },
+        ...(theaterId ? [{ $match: { 'screenDoc.theater': new mongoose.Types.ObjectId(theaterId) } }] : []),
+        { $lookup: { from: 'movies', localField: 'movie', foreignField: '_id', as: 'movieDoc' } },
+        { $unwind: '$movieDoc' },
+        {
+            $project: {
+                _id: 1,
+                showDateTime: 1,
+                title: '$movieDoc.title',
+                poster_path: '$movieDoc.poster_path',
+                screenName: '$screenDoc.name',
+                theaterId: '$screenDoc.theater',
+                totalCapacity: '$screenDoc.totalCapacity',
+                occupiedCount: { $size: { $objectToArray: '$occupiedSeats' } },
+            },
+        },
+        {
+            $project: {
+                _id: 1,
+                showDateTime: 1,
+                title: 1,
+                poster_path: 1,
+                screenName: 1,
+                theaterId: 1,
+                totalCapacity: 1,
+                occupiedCount: 1,
+                occupancyPct: {
+                    $cond: [
+                        { $gt: ['$totalCapacity', 0] },
+                        { $round: [{ $multiply: [{ $divide: ['$occupiedCount', '$totalCapacity'] }, 100] }, 1] },
+                        null,
+                    ],
+                },
+            },
+        },
+        { $sort: { showDateTime: 1 } },
+    ];
+
+    return Show.aggregate(pipeline);
+};
+
+export const getOccupancyPulse = asyncHandler(async (req, res) => {
+    const { theaterId } = req.query;
+    if (theaterId && !mongoose.Types.ObjectId.isValid(theaterId)) {
+        throw new AppError('Invalid theaterId', 400, 'INVALID_INPUT');
+    }
+    if (!theaterId) {
+        throw new AppError('theaterId is required', 400, 'INVALID_INPUT');
+    }
+
+    const shows = await buildOccupancyPulse(theaterId);
+    res.json({ success: true, windowHours: OCCUPANCY_PULSE_WINDOW_HOURS, shows });
+});
+
+export const getAdminOccupancyPulse = asyncHandler(async (req, res) => {
+    const { role, theaterId } = req.adminContext;
+    const { theaterId: queryTheaterId } = req.query;
+
+    let scopedTheaterId = null;
+    if (role === 'theaterAdmin') {
+        scopedTheaterId = theaterId;
+    } else if (queryTheaterId) {
+        if (!mongoose.Types.ObjectId.isValid(queryTheaterId)) {
+            throw new AppError('Invalid theaterId', 400, 'INVALID_INPUT');
+        }
+        scopedTheaterId = queryTheaterId;
+    }
+
+    const shows = await buildOccupancyPulse(scopedTheaterId);
+    res.json({ success: true, windowHours: OCCUPANCY_PULSE_WINDOW_HOURS, shows });
+});
 
 const loadShowForAdmin = async (showId, adminContext) => {
     if (!mongoose.Types.ObjectId.isValid(showId)) {
@@ -413,13 +517,16 @@ const invalidatePendingBookings = async (show, movieTitle) => {
 
 export const editShow = asyncHandler(async (req, res) => {
     const { showId } = req.params;
-    const { showDateTime, showPrice } = req.body;
+    const { showDateTime, showPrice, isMysteryMovie, mysteryRevealAt } = req.body;
 
-    if (showDateTime === undefined && showPrice === undefined) {
-        throw new AppError('showDateTime and/or showPrice are required', 400, 'INVALID_INPUT');
+    if (showDateTime === undefined && showPrice === undefined && isMysteryMovie === undefined && mysteryRevealAt === undefined) {
+        throw new AppError('At least one field to update is required', 400, 'INVALID_INPUT');
     }
     if (showPrice !== undefined && (typeof showPrice !== 'number' || !Number.isFinite(showPrice) || showPrice <= 0)) {
         throw new AppError('showPrice must be a positive number', 400, 'INVALID_INPUT');
+    }
+    if (mysteryRevealAt !== undefined && !MYSTERY_REVEAL_VALUES.includes(mysteryRevealAt)) {
+        throw new AppError(`mysteryRevealAt must be one of: ${MYSTERY_REVEAL_VALUES.join(', ')}`, 400, 'INVALID_INPUT');
     }
     let parsedDateTime;
     if (showDateTime !== undefined) {
@@ -435,11 +542,23 @@ export const editShow = asyncHandler(async (req, res) => {
     if (timeIsChanging && await hasPaidBookings(show._id)) {
         throw new AppError('Cannot change the showtime of a show with paid bookings; cancel those bookings first', 409, 'SHOW_HAS_PAID_BOOKINGS');
     }
+    const mysteryIsChanging = (isMysteryMovie !== undefined && isMysteryMovie !== show.isMysteryMovie)
+        || (mysteryRevealAt !== undefined && mysteryRevealAt !== show.mysteryRevealAt);
+    if (mysteryIsChanging && await hasPaidBookings(show._id)) {
+        throw new AppError('Cannot change mystery-movie settings on a show with paid bookings', 409, 'SHOW_HAS_PAID_BOOKINGS');
+    }
 
-    const before = { showDateTime: show.showDateTime, showPrice: show.showPrice };
+    const before = {
+        showDateTime: show.showDateTime,
+        showPrice: show.showPrice,
+        isMysteryMovie: show.isMysteryMovie,
+        mysteryRevealAt: show.mysteryRevealAt,
+    };
 
     if (showPrice !== undefined) show.showPrice = showPrice;
     if (parsedDateTime) show.showDateTime = parsedDateTime;
+    if (isMysteryMovie !== undefined) show.isMysteryMovie = isMysteryMovie;
+    if (mysteryRevealAt !== undefined) show.mysteryRevealAt = mysteryRevealAt;
     await show.save();
 
     if (timeIsChanging) {
@@ -452,7 +571,15 @@ export const editShow = asyncHandler(async (req, res) => {
         action: 'update',
         entityType: 'Show',
         entityId: show._id,
-        diff: { before, after: { showDateTime: show.showDateTime, showPrice: show.showPrice } },
+        diff: {
+            before,
+            after: {
+                showDateTime: show.showDateTime,
+                showPrice: show.showPrice,
+                isMysteryMovie: show.isMysteryMovie,
+                mysteryRevealAt: show.mysteryRevealAt,
+            },
+        },
     });
 
     req.log.info({ showId }, 'Show updated');
@@ -485,4 +612,37 @@ export const deleteShow = asyncHandler(async (req, res) => {
 
     req.log.info({ showId }, 'Show cancelled');
     res.json({ success: true, message: 'Show cancelled successfully' });
+});
+
+
+export const editMovie = asyncHandler(async (req, res) => {
+    const { movieId } = req.params;
+    const { hasPostCreditsScene } = req.body;
+
+    if (hasPostCreditsScene === undefined) {
+        throw new AppError('hasPostCreditsScene is required', 400, 'INVALID_INPUT');
+    }
+    if (typeof hasPostCreditsScene !== 'boolean') {
+        throw new AppError('hasPostCreditsScene must be a boolean', 400, 'INVALID_INPUT');
+    }
+
+    const movie = await Movie.findById(movieId);
+    if (!movie) {
+        throw new AppError('Movie not found', 404, 'MOVIE_NOT_FOUND');
+    }
+
+    const before = { hasPostCreditsScene: movie.hasPostCreditsScene };
+    movie.hasPostCreditsScene = hasPostCreditsScene;
+    await movie.save();
+
+    await recordAudit({
+        req,
+        action: 'update',
+        entityType: 'Movie',
+        entityId: movie._id,
+        diff: { before, after: { hasPostCreditsScene: movie.hasPostCreditsScene } },
+    });
+
+    req.log.info({ movieId, hasPostCreditsScene }, 'Movie updated');
+    res.json({ success: true, message: 'Movie updated successfully', movie });
 });

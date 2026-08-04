@@ -1,6 +1,7 @@
 import express from 'express';
 import { protectAdmin, requireSuperAdmin } from '../middleware/auth.js';
 import { exportBookingsCsv, getAllBookings, getAllShows, getAuditLog, getDashboardAnalytics, getDashboardData, isAdmin } from '../controllers/adminController.js';
+import { getAdminOccupancyPulse } from '../controllers/showController.js';
 
 const adminRouter = express.Router();
 
@@ -108,6 +109,36 @@ adminRouter.get('/dashboard-data', protectAdmin , getDashboardData);
  *         $ref: '#/components/responses/ServerError'
  */
 adminRouter.get('/dashboard-analytics', protectAdmin , getDashboardAnalytics);
+
+/**
+ * @openapi
+ * /admin/occupancy-pulse:
+ *   get:
+ *     summary: Get live occupancy % for every upcoming show in the next 24 hours (ops view)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     description: >
+ *       Auth: admin only. A theater-admin's data is always scoped to their own theater.
+ *       A super-admin sees all theaters by default, or a single theater via ?theaterId=.
+ *     parameters:
+ *       - in: query
+ *         name: theaterId
+ *         schema: { type: string }
+ *         description: Super-admin only. Restricts results to a single theater.
+ *     responses:
+ *       200:
+ *         description: Live occupancy per upcoming show
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+adminRouter.get('/occupancy-pulse', protectAdmin , getAdminOccupancyPulse);
 
 /**
  * @openapi
