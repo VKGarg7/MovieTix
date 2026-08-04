@@ -4,8 +4,10 @@ import BlurCircle from "../components/BlurCircle";
 import timeFormat from "../lib/timeFormat";
 import { dateFormat } from "../lib/dateFomat";
 import { useAppContext } from "../context/useAppContext";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
+import useFetchOnUser from "../hooks/useFetchOnUser";
+import useScrollToHash from "../hooks/useScrollToHash";
 
 const CANCELLATION_CUTOFF_HOURS = 2;
 const TABS = ["Upcoming", "Completed", "Cancelled"];
@@ -39,8 +41,30 @@ const Countdown = ({ showDateTime }) => {
   );
 };
 
+const formatClaimCountdown = (ms) => {
+  if (ms <= 0) return "Offer expired";
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s left to claim`;
+};
+
+const ClaimCountdown = ({ offerExpiresAt }) => {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const remainingMs = new Date(offerExpiresAt).getTime() - now;
+
+  return <span>{formatClaimCountdown(remainingMs)}</span>;
+};
+
 const MyBookings = () => {
   const { axios, getToken, user, image_base_url } = useAppContext();
+  const location = useLocation();
 
   const currency = import.meta.env.VITE_CURRENCY;
 
@@ -59,6 +83,9 @@ const MyBookings = () => {
   const [showPointsHistory, setShowPointsHistory] = useState(false);
   const [referralCode, setReferralCode] = useState("");
   const [referralCount, setReferralCount] = useState(0);
+  const [groupBookings, setGroupBookings] = useState([]);
+  const [waitlistEntries, setWaitlistEntries] = useState([]);
+  const [leavingWaitlistShowId, setLeavingWaitlistShowId] = useState(null);
 
   const getMyBookings = async (category, targetPage) => {
     try {
@@ -97,17 +124,8 @@ const MyBookings = () => {
     }
   };
 
-  useEffect(() => {
-    if (!user) return;
-    getMyBookings(activeTab, page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, activeTab, page]);
-
-  useEffect(() => {
-    if (!user) return;
-    refreshTabCounts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  useFetchOnUser(user, () => getMyBookings(activeTab, page), [activeTab, page]);
+  useFetchOnUser(user, refreshTabCounts);
 
   const getPointsBalance = async () => {
     try {
@@ -138,11 +156,7 @@ const MyBookings = () => {
     }
   };
 
-  useEffect(() => {
-    if (!user) return;
-    getPointsBalance();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  useFetchOnUser(user, getPointsBalance);
 
   const getReferralInfo = async () => {
     try {
@@ -158,11 +172,53 @@ const MyBookings = () => {
     }
   };
 
-  useEffect(() => {
-    if (!user) return;
-    getReferralInfo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  useFetchOnUser(user, getReferralInfo);
+
+  const getMyGroupBookings = async () => {
+    try {
+      const { data } = await axios.get("/api/group-booking/mine", {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success) setGroupBookings(data.groupBookings);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  useFetchOnUser(user, getMyGroupBookings);
+  useScrollToHash(location.hash, "#watch-parties", groupBookings.length > 0);
+
+  const getMyWaitlist = async () => {
+    try {
+      const { data } = await axios.get("/api/waitlist/mine", {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success) setWaitlistEntries(data.waitlistEntries);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  useFetchOnUser(user, getMyWaitlist);
+  useScrollToHash(location.hash, "#waitlist", waitlistEntries.length > 0);
+
+  const leaveWaitlist = async (showId) => {
+    setLeavingWaitlistShowId(showId);
+    try {
+      const { data } = await axios.post(
+        `/api/waitlist/${showId}/leave`,
+        {},
+        { headers: { Authorization: `Bearer ${await getToken()}` } }
+      );
+      if (data.success) {
+        toast.success("Left the waitlist");
+        getMyWaitlist();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to leave waitlist");
+    }
+    setLeavingWaitlistShowId(null);
+  };
 
   const referralLink = referralCode ? `${window.location.origin}/?ref=${referralCode}` : "";
 
@@ -313,6 +369,78 @@ const MyBookings = () => {
             >
               Copy
             </button>
+          </div>
+        </div>
+      )}
+
+      {groupBookings.length > 0 && (
+        <div id="watch-parties" className="max-w-3xl mb-6 scroll-mt-24">
+          <p className="text-sm font-semibold mb-2">My Watch Parties</p>
+          <div className="flex flex-col gap-2">
+            {groupBookings.map((group) => (
+              <Link
+                key={group.groupId}
+                to={`/group-booking/${group.groupId}/manage`}
+                className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-lg px-4 py-3 hover:bg-primary/15 transition"
+              >
+                <div>
+                  <p className="text-sm font-medium">{group.show?.movieTitle || "Show no longer available"}</p>
+                  {group.show?.showDateTime && (
+                    <p className="text-xs text-gray-400">{dateFormat(group.show.showDateTime)}</p>
+                  )}
+                </div>
+                <div className="text-right text-xs text-gray-400">
+                  <p className="capitalize">{group.status}</p>
+                  <p>{group.claimedCount}/{group.totalSeats} claimed &middot; {group.paidCount}/{group.totalSeats} paid</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {waitlistEntries.length > 0 && (
+        <div id="waitlist" className="max-w-3xl mb-6 scroll-mt-24">
+          <p className="text-sm font-semibold mb-2">My Waitlist</p>
+          <div className="flex flex-col gap-2">
+            {waitlistEntries.map((entry) => (
+              <div
+                key={entry.waitlistEntryId}
+                className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-lg px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{entry.show?.movieTitle || "Show no longer available"}</p>
+                  {entry.show?.showDateTime && (
+                    <p className="text-xs text-gray-400">{dateFormat(entry.show.showDateTime)}</p>
+                  )}
+                  {entry.status === "waiting" && (
+                    <p className="text-xs text-gray-400 mt-1">Position #{entry.position} in line</p>
+                  )}
+                  {entry.status === "offered" && (
+                    <p className="text-xs text-primary mt-1">
+                      Seat {entry.offeredSeat} offered &mdash; <ClaimCountdown offerExpiresAt={entry.offerExpiresAt} />
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {entry.status === "offered" && (
+                    <Link
+                      to={`/waitlist/${entry.waitlistEntryId}/claim`}
+                      className="px-3 py-1.5 text-xs bg-primary rounded-full font-medium"
+                    >
+                      Claim Now
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => leaveWaitlist(entry.showId)}
+                    disabled={leavingWaitlistShowId === entry.showId}
+                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer disabled:opacity-50"
+                  >
+                    Leave
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { assets } from "../assets/assets";
-import { MenuIcon, SearchIcon, TicketPlus , XIcon, MapPinIcon } from "lucide-react";
+import { MenuIcon, SearchIcon, TicketPlus, Users, Clock, XIcon, MapPinIcon } from "lucide-react";
 import { useClerk, UserButton, useUser } from "@clerk/clerk-react";
 import { useAppContext } from "../context/useAppContext";
 
@@ -54,6 +54,8 @@ const Navbar = ({ onChangeLocation }) => {
             <UserButton>
               <UserButton.MenuItems>
                 <UserButton.Action label="My Bookings" labelIcon={<TicketPlus width={15}/>} onClick={()=> navigate('/my-bookings')}/>
+                <UserButton.Action label="My Watch Parties" labelIcon={<Users width={15}/>} onClick={()=> navigate('/my-bookings#watch-parties')}/>
+                <UserButton.Action label="My Waitlist" labelIcon={<Clock width={15}/>} onClick={()=> navigate('/my-bookings#waitlist')}/>
               </UserButton.MenuItems>    
             </UserButton>
           )

@@ -6,6 +6,10 @@ import Home from './pages/Home'
 import Movies from './pages/Movies'
 import MovieDetails from './pages/MovieDetails'
 import SeatLayout from './pages/SeatLayout'
+import GroupBookingCreate from './pages/GroupBookingCreate'
+import GroupBookingClaim from './pages/GroupBookingClaim'
+import GroupBookingManage from './pages/GroupBookingManage'
+import WaitlistClaim from './pages/WaitlistClaim'
 import MyBookings from './pages/MyBookings'
 import Favourite from './pages/Favourite'
 import Theaters from './pages/Theaters'
@@ -46,6 +50,10 @@ const App = () => {
         <Route path='/movies' element={<Movies/>} />
         <Route path='/movies/:id' element={<MovieDetails/>} />
         <Route path='/movies/:id/:date' element={<SeatLayout/>} />
+        <Route path='/movies/:id/:date/group-booking' element={<GroupBookingCreate/>} />
+        <Route path='/group-booking/:groupId' element={<GroupBookingClaim/>} />
+        <Route path='/group-booking/:groupId/manage' element={<GroupBookingManage/>} />
+        <Route path='/waitlist/:entryId/claim' element={<WaitlistClaim/>} />
         <Route path='/my-bookings' element={<MyBookings/>} />
         <Route path='/loading/:nextUrl' element={<Loading/>} />
         

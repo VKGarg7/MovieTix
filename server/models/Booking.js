@@ -22,6 +22,9 @@ const bookingSchema = new mongoose.Schema({
     paymentLink: {type: String},
     paymentIntentId: {type: String},
     status: {type: String, enum: ['pending', 'confirmed', 'cancelled', 'pending-cancellation'], default: 'pending'},
+    groupBookingId: {type: mongoose.Schema.Types.ObjectId, ref: 'GroupBooking', default: null},
+    groupBookingSeats: {type: [String], default: []},
+    waitlistEntryId: {type: mongoose.Schema.Types.ObjectId, ref: 'Waitlist', default: null},
 } , {timestamps: true});
 
 const Booking = mongoose.model('Booking', bookingSchema);

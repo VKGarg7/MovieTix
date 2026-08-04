@@ -10,7 +10,7 @@ import { inngest } from '../inngest/index.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
 import { assertScreenBelongsToTheater, hasPaidBookings } from '../utils/theaterScope.js';
-import { releaseSeatsAtomic } from '../utils/seatOperations.js';
+import { releaseSeatsAndNotifyWaitlist, getSeatCapacityInfo } from '../utils/seatOperations.js';
 import { renderEmail, highlight } from '../utils/emailTemplate.js';
 import tmdb from '../utils/tmdbClient.js';
 import { bookableShowFilter, getBookableMovieIds } from '../utils/showQueries.js';
@@ -290,12 +290,18 @@ export const getShow = asyncHandler(async (req, res) => {
         if (!dateTime[date]) {
             dateTime[date] = []
         }
+
+        const { occupiedCount, totalCapacity, isSoldOut } = getSeatCapacityInfo(show);
+
         dateTime[date].push({
             time: show.showDateTime,
             showId: show._id,
             screen: show.screen,
             showPrice: show.showPrice,
             computedPrice,
+            occupiedCount,
+            totalCapacity,
+            isSoldOut,
         })
     }
 
@@ -322,7 +328,7 @@ const invalidatePendingBookings = async (show, movieTitle) => {
     if (pendingBookings.length === 0) return;
 
     const seatsToRelease = pendingBookings.flatMap(b => b.bookedSeats);
-    await releaseSeatsAtomic(show._id, seatsToRelease);
+    await releaseSeatsAndNotifyWaitlist(show._id, seatsToRelease);
 
     await Booking.deleteMany({ _id: { $in: pendingBookings.map(b => b._id) } });
 

@@ -10,7 +10,7 @@ import { buildSeatCapacityByRow, isSeatValidForScreen } from '../utils/seatId.js
 import { buildBookingIcs } from '../utils/calendarEvent.js';
 import { buildPickupQrPng } from '../utils/qrCode.js';
 import { verifyPickupToken } from '../utils/pickupToken.js';
-import { releaseSeatsAtomic, occupySeatsAtomic } from '../utils/seatOperations.js';
+import { occupySeatsAtomic, releaseSeatsAndNotifyWaitlist } from '../utils/seatOperations.js';
 import { SCREEN_WITH_THEATER, assertScreenBelongsToTheater } from '../utils/theaterScope.js';
 import { loadOwnedBooking } from '../utils/bookingOwnership.js';
 import { redeemCouponAtomic, releaseCouponAtomic } from './couponController.js';
@@ -51,22 +51,14 @@ const resolveSnacks = async (requestedSnacks, theaterId) => {
 };
 
 
-const MAX_SEATS_PER_BOOKING = 5;
+export const MAX_SEATS_PER_BOOKING = 5;
 
-export const createBooking = asyncHandler(async(req , res)=> {
-    const {userId} = req.auth();
-    const {showId , selectedSeats, couponCode, snacks: requestedSnacks, redeemPoints} = req.body;
-    const {origin} =  req.headers;
 
-    if (!showId || !Array.isArray(selectedSeats) || selectedSeats.length === 0) {
-        throw new AppError('showId and selectedSeats are required', 400, 'INVALID_INPUT');
-    }
-    if (selectedSeats.length > MAX_SEATS_PER_BOOKING) {
-        throw new AppError(`You can book at most ${MAX_SEATS_PER_BOOKING} seats`, 400, 'TOO_MANY_SEATS');
-    }
-    if (redeemPoints !== undefined && (!Number.isInteger(redeemPoints) || redeemPoints <= 0)) {
-        throw new AppError('redeemPoints must be a positive integer', 400, 'INVALID_INPUT');
-    }
+export const runBookingCheckout = async ({
+    userId, showId, selectedSeats, couponCode, requestedSnacks, redeemPoints, origin,
+    skipSeatLock = false, extraBookingFields = {}, onSeatRollback,
+}) => {
+    const rollbackSeats = onSeatRollback || (seats => releaseSeatsAndNotifyWaitlist(showId, seats));
 
     const showForSeatCheck = await Show.findById(showId).populate(SCREEN_WITH_THEATER);
     if (!showForSeatCheck || showForSeatCheck.isCancelled) {
@@ -81,22 +73,30 @@ export const createBooking = asyncHandler(async(req , res)=> {
     const theaterId = showForSeatCheck.screen?.theater?._id ?? showForSeatCheck.screen?.theater;
     const theaterTimezone = showForSeatCheck.screen?.theater?.timezone;
 
-    const seatConditions = selectedSeats.map(seat => ({ [`occupiedSeats.${seat}`]: { $exists: false } }));
-    const seatUpdates = Object.fromEntries(selectedSeats.map(seat => [`occupiedSeats.${seat}`, userId]));
+    let showData;
+    if (skipSeatLock) {
+        showData = await Show.findById(showId).populate('movie');
+        if (!showData) {
+            throw new AppError('Show not found', 404, 'SHOW_NOT_FOUND');
+        }
+    } else {
+        const seatConditions = selectedSeats.map(seat => ({ [`occupiedSeats.${seat}`]: { $exists: false } }));
+        const seatUpdates = Object.fromEntries(selectedSeats.map(seat => [`occupiedSeats.${seat}`, userId]));
 
-    const showData = await Show.findOneAndUpdate(
-        { _id: showId, $and: seatConditions },
-        { $set: seatUpdates },
-        { new: true }
-    ).populate('movie');
+        showData = await Show.findOneAndUpdate(
+            { _id: showId, $and: seatConditions },
+            { $set: seatUpdates },
+            { new: true }
+        ).populate('movie');
 
-    if(!showData) {
-        const showExists = await Show.exists({ _id: showId });
-        throw new AppError(
-            showExists ? "Selected seats are not available" : "Show not found",
-            showExists ? 409 : 404,
-            showExists ? 'SEATS_UNAVAILABLE' : 'SHOW_NOT_FOUND'
-        );
+        if(!showData) {
+            const showExists = await Show.exists({ _id: showId });
+            throw new AppError(
+                showExists ? "Selected seats are not available" : "Show not found",
+                showExists ? 409 : 404,
+                showExists ? 'SEATS_UNAVAILABLE' : 'SHOW_NOT_FOUND'
+            );
+        }
     }
 
     const pricingRules = await fetchApplicableRules(theaterId);
@@ -114,7 +114,7 @@ export const createBooking = asyncHandler(async(req , res)=> {
         try {
             redeemedCoupon = await redeemCouponAtomic(couponCode, theaterId);
         } catch (error) {
-            await releaseSeatsAtomic(showId, selectedSeats);
+            await rollbackSeats(selectedSeats);
             throw error;
         }
         discountAmount = computeDiscount(redeemedCoupon, originalAmount);
@@ -122,7 +122,7 @@ export const createBooking = asyncHandler(async(req , res)=> {
 
         if (finalAmount <= 0) {
             await releaseCouponAtomic(redeemedCoupon.code);
-            await releaseSeatsAtomic(showId, selectedSeats);
+            await rollbackSeats(selectedSeats);
             throw new AppError('Coupon discount cannot cover the full booking amount', 400, 'COUPON_INVALID');
         }
     }
@@ -132,7 +132,7 @@ export const createBooking = asyncHandler(async(req , res)=> {
     try {
         ({ snacks, snacksAmount } = await resolveSnacks(requestedSnacks, theaterId));
     } catch (error) {
-        await releaseSeatsAtomic(showId, selectedSeats);
+        await rollbackSeats(selectedSeats);
         if (redeemedCoupon) {
             await releaseCouponAtomic(redeemedCoupon.code);
         }
@@ -149,6 +149,7 @@ export const createBooking = asyncHandler(async(req , res)=> {
         bookedSeats: selectedSeats,
         snacks,
         snacksAmount,
+        ...extraBookingFields,
     })
 
     let pointsDiscountAmount = 0;
@@ -156,7 +157,7 @@ export const createBooking = asyncHandler(async(req , res)=> {
         try {
             pointsDiscountAmount = await redeemPointsAtomic(userId, booking._id.toString(), redeemPoints, finalAmount);
         } catch (error) {
-            await releaseSeatsAtomic(showId, selectedSeats);
+            await rollbackSeats(selectedSeats);
             if (redeemedCoupon) {
                 await releaseCouponAtomic(redeemedCoupon.code);
             }
@@ -168,7 +169,7 @@ export const createBooking = asyncHandler(async(req , res)=> {
 
         if (finalAmount <= 0) {
             await refundRedeemedPoints(userId, booking._id.toString());
-            await releaseSeatsAtomic(showId, selectedSeats);
+            await rollbackSeats(selectedSeats);
             if (redeemedCoupon) {
                 await releaseCouponAtomic(redeemedCoupon.code);
             }
@@ -228,12 +229,10 @@ export const createBooking = asyncHandler(async(req , res)=> {
             }
         })
 
-        req.log.info({ bookingId: booking._id.toString(), showId, userId }, 'Booking created, checkout session started');
-        res.json({success: true, url: session.url});
+        return { booking, session };
 
     } catch (error) {
-        req.log.error({ err: error, bookingId: booking._id.toString(), showId }, 'Stripe checkout setup failed, releasing seats');
-        await releaseSeatsAtomic(showId, selectedSeats);
+        await rollbackSeats(selectedSeats);
         if (redeemedCoupon) {
             await releaseCouponAtomic(redeemedCoupon.code);
         }
@@ -243,6 +242,29 @@ export const createBooking = asyncHandler(async(req , res)=> {
         await Booking.findByIdAndDelete(booking._id);
         throw error;
     }
+};
+
+export const createBooking = asyncHandler(async(req , res)=> {
+    const {userId} = req.auth();
+    const {showId , selectedSeats, couponCode, snacks: requestedSnacks, redeemPoints} = req.body;
+    const {origin} =  req.headers;
+
+    if (!showId || !Array.isArray(selectedSeats) || selectedSeats.length === 0) {
+        throw new AppError('showId and selectedSeats are required', 400, 'INVALID_INPUT');
+    }
+    if (selectedSeats.length > MAX_SEATS_PER_BOOKING) {
+        throw new AppError(`You can book at most ${MAX_SEATS_PER_BOOKING} seats`, 400, 'TOO_MANY_SEATS');
+    }
+    if (redeemPoints !== undefined && (!Number.isInteger(redeemPoints) || redeemPoints <= 0)) {
+        throw new AppError('redeemPoints must be a positive integer', 400, 'INVALID_INPUT');
+    }
+
+    const { booking, session } = await runBookingCheckout({
+        userId, showId, selectedSeats, couponCode, requestedSnacks, redeemPoints, origin,
+    });
+
+    req.log.info({ bookingId: booking._id.toString(), showId, userId }, 'Booking created, checkout session started');
+    res.json({success: true, url: session.url});
 });
 
 
@@ -376,7 +398,7 @@ export const cancelBooking = asyncHandler(async(req, res) => {
         throw new AppError(`Bookings can only be cancelled at least ${cutoffHours} hour(s) before the showtime`, 400, 'CANCELLATION_WINDOW_PASSED');
     }
 
-    await releaseSeatsAtomic(booking.show, booking.bookedSeats);
+    await releaseSeatsAndNotifyWaitlist(booking.show, booking.bookedSeats);
 
     try {
         const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
