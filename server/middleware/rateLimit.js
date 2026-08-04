@@ -51,3 +51,9 @@ export const seatPollingLimiter = buildLimiter({
     max: toInt(process.env.RATE_LIMIT_SEATS_MAX, 30),
     message: 'Too many seat-availability requests, please slow down.'
 });
+
+export const groupStatusPollingLimiter = buildLimiter({
+    windowMs: minutes(toInt(process.env.RATE_LIMIT_GROUP_STATUS_WINDOW_MIN, 1)),
+    max: toInt(process.env.RATE_LIMIT_GROUP_STATUS_MAX, 30),
+    message: 'Too many group-booking status requests, please slow down.'
+});

@@ -3,6 +3,7 @@ import Booking from '../models/Booking.js';
 import {inngest} from '../inngest/index.js';
 import { awardPoints } from '../utils/loyaltyPoints.js';
 import { grantReferralRewardIfEligible } from '../utils/referrals.js';
+import { updateClaimsForSeats } from '../utils/groupBookingClaims.js';
 
 export const stripeWebhooks = async (request , response) => {
     const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
@@ -33,6 +34,16 @@ export const stripeWebhooks = async (request , response) => {
 
                 await awardPoints(booking.user, bookingId, booking.amount);
                 await grantReferralRewardIfEligible(booking.user);
+
+                if (booking.groupBookingId) {
+                    const seatsToMark = booking.groupBookingSeats?.length ? booking.groupBookingSeats : booking.bookedSeats;
+                    // userId guard is defense-in-depth against any theoretical
+                    // reclaim race between checkout-session creation and webhook delivery.
+                    await updateClaimsForSeats(booking.groupBookingId, seatsToMark, { isPaid: true }, {
+                        extraArrayFilterFields: { userId: booking.user },
+                    });
+                    log.info({ bookingId, groupBookingId: booking.groupBookingId.toString() }, 'Group claim marked paid');
+                }
 
                 await inngest.send({
                     name: 'app/show.booked',

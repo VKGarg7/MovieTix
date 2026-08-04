@@ -1,25 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { assets } from "../assets/assets";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import Loading from "../components/Loading";
 import isoTimeFormat from "../lib/isoTimeFormat";
-import { ArrowRightIcon, ClockIcon, Star, Sofa, Accessibility } from "lucide-react";
+import { ArrowRightIcon, ClockIcon, Users } from "lucide-react";
 import BlurCircle from "../components/BlurCircle";
 import { toast } from "react-hot-toast";
 import { useAppContext } from "../context/useAppContext";
+import SeatGrid, { SeatTypeLegend } from "../components/SeatGrid";
+import PillOptionSelector from "../components/PillOptionSelector";
+import { findBestAvailableSeats } from "../lib/bestAvailableSeats";
 
-const SEAT_TYPE_META = {
-  regular: { label: "Regular", border: "border-primary/60", icon: null },
-  premium: { label: "Premium", border: "border-amber-400/80", icon: Star },
-  recliner: { label: "Recliner", border: "border-purple-400/80", icon: Sofa },
-  accessible: { label: "Accessible", border: "border-sky-400/80", icon: Accessibility },
-};
-
-const getSeatTypeMeta = (seatType) => SEAT_TYPE_META[seatType] || SEAT_TYPE_META.regular;
 const currency = import.meta.env.VITE_CURRENCY;
+const MAX_SEATS_PER_BOOKING = 5;
 
 const SeatLayout = () => {
   const { id, date } = useParams();
+  const navigate = useNavigate();
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [selectedTime, setSelectedTime] = useState(null);
   const [show, setShow] = useState(null);
@@ -33,6 +30,8 @@ const SeatLayout = () => {
   const [pointsConfig, setPointsConfig] = useState(null);
   const [redeemPointsInput, setRedeemPointsInput] = useState('');
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const [joiningWaitlist, setJoiningWaitlist] = useState(false);
+  const [bestSeatCount, setBestSeatCount] = useState(2);
 
   const {axios , getToken , user , selectedTheater , fetchShowDetails} = useAppContext();
 
@@ -94,8 +93,8 @@ const SeatLayout = () => {
     if (!selectedTime) {
       return toast("Please select a time first");
     }
-    if (!selectedSeats.includes(seatId) && selectedSeats.length > 4) {
-      return toast("You can only select 5 seats");
+    if (!selectedSeats.includes(seatId) && selectedSeats.length >= MAX_SEATS_PER_BOOKING) {
+      return toast(`You can only select ${MAX_SEATS_PER_BOOKING} seats`);
     }
     if( occupiedSeats.includes(seatId)){
       return toast("This seat is already occupied");
@@ -108,39 +107,6 @@ const SeatLayout = () => {
     setAppliedCoupon(null);
     setPointsToRedeem(0);
     setRedeemPointsInput('');
-  };
-
-  const renderSeats = (rowLabel, seatCount, seatType = "regular") => {
-    const { label, border, icon: SeatIcon } = getSeatTypeMeta(seatType);
-
-    return (
-      <div key={rowLabel} className="flex items-center gap-3 mt-2">
-        <span className="w-4 shrink-0 text-gray-500">{rowLabel}</span>
-        <div className="flex flex-nowrap items-center gap-2">
-          {Array.from({ length: seatCount }, (_, i) => {
-            const seatId = `${rowLabel}${i + 1}`;
-            const isSelected = selectedSeats.includes(seatId);
-            const isOccupied = occupiedSeats.includes(seatId);
-            return (
-              <button
-                key={seatId}
-                onClick={() => handleSeatClick(seatId)}
-                title={`${seatId} — ${label}`}
-                className={`relative h-8 w-8 shrink-0 rounded border cursor-pointer flex items-center justify-center text-[10px]
-              ${border}
-              ${isSelected ? "bg-primary text-white" : ""}
-              ${isOccupied ? "opacity-40 cursor-not-allowed" : ""}`}
-              >
-                {seatId}
-                {SeatIcon && (
-                  <SeatIcon className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-[#1f1f24] rounded-full p-0.5 box-content" />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
   };
 
   const getOccupiedSeats = async () => {
@@ -156,6 +122,53 @@ const SeatLayout = () => {
       console.log(error);
     }
   }
+
+  const handleJoinWaitlist = async () => {
+    if (!user) return toast.error("Please login to join the waitlist");
+    if (!selectedTime) return;
+
+    setJoiningWaitlist(true);
+    try {
+      const { data } = await axios.post(
+        "/api/waitlist/join",
+        { showId: selectedTime.showId },
+        { headers: { Authorization: `Bearer ${await getToken()}` } }
+      );
+      if (data.success) {
+        toast.success(`You're #${data.position} on the waitlist — we'll email you if a seat opens up!`);
+      }
+    } catch (error) {
+      const code = error.response?.data?.code;
+      if (code === "ALREADY_ON_WAITLIST") {
+        toast.error("You're already on the waitlist for this show");
+      } else {
+        toast.error(error.response?.data?.message || "Failed to join waitlist");
+      }
+    }
+    setJoiningWaitlist(false);
+  };
+
+  const handleFindBestSeats = () => {
+    if (!selectedTime) return toast("Please select a time first");
+
+    const rows = selectedTime.screen?.rows || [];
+    const { seats, isFullMatch } = findBestAvailableSeats(rows, bestSeatCount, occupiedSeats);
+
+    if (seats.length === 0) {
+      return toast.error("No available seats found for this showtime");
+    }
+
+    setSelectedSeats(seats);
+    setAppliedCoupon(null);
+    setPointsToRedeem(0);
+    setRedeemPointsInput('');
+
+    if (isFullMatch) {
+      toast.success(`Best available seats selected: ${seats.join(", ")}`);
+    } else {
+      toast(`No contiguous block of ${bestSeatCount} seats is available — selected the largest available block instead: ${seats.join(", ")}`);
+    }
+  };
 
   const applyCoupon = async () => {
     if (!couponInput.trim()) return toast.error("Enter a coupon code");
@@ -265,6 +278,11 @@ const SeatLayout = () => {
             >
               <ClockIcon className="w-4 h-4" />
               <p className="text-sm">{isoTimeFormat(item.time)}</p>
+              {item.isSoldOut && (
+                <span className="text-[9px] font-semibold text-red-400 border border-red-400/50 rounded px-1">
+                  SOLD OUT
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -275,29 +293,63 @@ const SeatLayout = () => {
         <BlurCircle top="-100px" left="-100px" />
         <BlurCircle bottom="0px" right="0px" />
         <h1 className="text-2xl font-semibold mb-4">Select your seat</h1>
+
+        <button
+          onClick={() => navigate(`/movies/${id}/${date}/group-booking`)}
+          className="flex items-center gap-1.5 mb-6 px-4 py-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full hover:bg-primary/10 cursor-pointer transition"
+        >
+          <Users className="w-3.5 h-3.5" />
+          Start a Watch Party instead
+        </button>
+
         <img src={assets.screenImage} alt="screen" />
         <p className="text-gray-400 text-sm mb-6">SCREEN SIDE</p>
 
-        {selectedTime?.screen?.rows?.length > 0 && (
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mt-6 text-[11px] text-gray-400">
-            {Object.entries(SEAT_TYPE_META).map(([type, { label, border, icon: SeatIcon }]) => (
-              <div key={type} className="flex items-center gap-1.5">
-                <span className={`relative h-4 w-4 rounded border ${border}`}>
-                  {SeatIcon && <SeatIcon className="absolute inset-0 m-auto w-2.5 h-2.5" />}
-                </span>
-                {label}
-              </div>
-            ))}
+        {selectedTime?.isSoldOut ? (
+          <div className="mt-6 w-full max-w-sm flex flex-col items-center gap-3 bg-red-950/30 border border-red-500/30 rounded-lg px-6 py-5 text-center">
+            <p className="text-sm font-medium text-red-400">This show is sold out</p>
+            <button
+              onClick={handleJoinWaitlist}
+              disabled={joiningWaitlist}
+              className="px-6 py-2 text-sm bg-primary rounded-full cursor-pointer disabled:opacity-50"
+            >
+              {joiningWaitlist ? "Joining..." : "Join Waitlist"}
+            </button>
           </div>
-        )}
+        ) : (
+          <>
+            {selectedTime?.screen?.rows?.length > 0 && <SeatTypeLegend />}
 
-        <div className="w-full max-w-full overflow-x-auto">
-          <div className="flex flex-col items-center mt-10 text-xs text-gray-300 gap-1 max-h-[60vh] overflow-y-auto py-1 w-max mx-auto">
-            {(selectedTime?.screen?.rows || []).map((row) =>
-              renderSeats(row.label, row.seatCount, row.seatType)
+            {selectedTime?.screen?.rows?.length > 0 && (
+              <div className="flex flex-col items-center gap-2 mt-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 text-xs">Seats:</span>
+                  <PillOptionSelector
+                    options={Array.from({ length: MAX_SEATS_PER_BOOKING }, (_, i) => i + 1)}
+                    value={bestSeatCount}
+                    onChange={setBestSeatCount}
+                    circular
+                  />
+                </div>
+                <button
+                  onClick={handleFindBestSeats}
+                  className="px-4 py-1.5 text-xs font-medium bg-primary rounded-full cursor-pointer active:scale-95"
+                >
+                  Best Available Seats
+                </button>
+              </div>
             )}
-          </div>
-        </div>
+
+            <SeatGrid
+              rows={selectedTime?.screen?.rows}
+              onSeatClick={handleSeatClick}
+              seatState={(seatId) => ({
+                selected: selectedSeats.includes(seatId),
+                disabled: occupiedSeats.includes(seatId),
+              })}
+            />
+          </>
+        )}
 
         {selectedSeats.length > 0 && menuItems.length > 0 && (
           <div className="mt-16 w-full max-w-xs">
@@ -427,13 +479,15 @@ const SeatLayout = () => {
           </div>
         )}
 
-        <button
-          onClick={bookTickets}
-          className="flex items-center gap-1 mt-6 px-10 py-3 text-sm bg-primary cursor-pointer active:scale-95"
-        >
-          Proceed to Checkout
-          <ArrowRightIcon strokeWidth={3} className="w-4 h-4" />
-        </button>
+        {!selectedTime?.isSoldOut && (
+          <button
+            onClick={bookTickets}
+            className="flex items-center gap-1 mt-6 px-10 py-3 text-sm bg-primary cursor-pointer active:scale-95"
+          >
+            Proceed to Checkout
+            <ArrowRightIcon strokeWidth={3} className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   ) : (

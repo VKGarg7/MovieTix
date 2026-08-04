@@ -1,6 +1,7 @@
 import { Inngest } from "inngest";
 import User from "../models/User.js";
 import Booking from "../models/Booking.js";
+import GroupBooking from "../models/GroupBooking.js";
 import Show from "../models/Show.js";
 import Follow from "../models/Follow.js";
 import sendEmail from "../configs/nodeMailer.js";
@@ -9,8 +10,11 @@ import { buildBookingIcs } from "../utils/calendarEvent.js";
 import { buildPickupQrPng } from "../utils/qrCode.js";
 import { formatInZone } from "../utils/timezone.js";
 import { SCREEN_WITH_THEATER } from "../utils/theaterScope.js";
-import { releaseSeatsAtomic } from "../utils/seatOperations.js";
+import { releaseSeatsAtomic, releaseSeatsAndNotifyWaitlist } from "../utils/seatOperations.js";
+import Waitlist from "../models/Waitlist.js";
+import { offerSeatsToWaitlist, CLAIM_WINDOW_MINUTES } from "../utils/waitlistOffers.js";
 import { releaseCouponAtomic } from "../controllers/couponController.js";
+import { revertClaimsToUnclaimed } from "../utils/groupBookingClaims.js";
 import { refundRedeemedPoints } from "../utils/loyaltyPoints.js";
 import { assignReferralCode, attributeReferral } from "../utils/referrals.js";
 import { renderEmail, highlight } from "../utils/emailTemplate.js";
@@ -76,7 +80,13 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
       const booking = await Booking.findById(bookingId)
 
       if (!booking.isPaid) {
-        await releaseSeatsAtomic(booking.show, booking.bookedSeats);
+        await releaseSeatsAndNotifyWaitlist(booking.show, booking.bookedSeats);
+        if (booking.groupBookingId) {
+          // An abandoned group-claim checkout must revert its claims back to
+          // unclaimed, otherwise the group's ledger keeps showing the seat as
+          // claimed even though it was just released back to Show.occupiedSeats.
+          await revertClaimsToUnclaimed(booking.groupBookingId, booking.bookedSeats);
+        }
         if (booking.couponCode) {
           await releaseCouponAtomic(booking.couponCode);
         }
@@ -87,6 +97,96 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
         logger.info({ bookingId }, 'Unpaid booking expired, seats released');
       }
     })
+  }
+)
+
+const expireGroupBooking = inngest.createFunction(
+  { id: 'expire-group-booking' },
+  { event: 'app/group-booking.expire' },
+  async ({ event, step }) => {
+    const { groupBookingId, expiresAt } = event.data;
+    await step.sleepUntil('wait-until-group-expiry', new Date(expiresAt));
+
+    await step.run('release-unclaimed-and-unpaid-seats', async () => {
+      const group = await GroupBooking.findById(groupBookingId);
+      if (!group || group.status !== 'active') {
+        logger.info({ groupBookingId }, 'Group booking already inactive at expiry time, skipping');
+        return;
+      }
+
+      const unpaidClaims = group.claims.filter(c => !c.isPaid);
+      const seatsToRelease = unpaidClaims.map(c => c.seat);
+
+      const orphanedBookingIds = unpaidClaims.filter(c => c.bookingId).map(c => c.bookingId);
+      if (orphanedBookingIds.length) {
+        await Booking.updateMany(
+          { _id: { $in: orphanedBookingIds }, isPaid: false },
+          { $set: { status: 'cancelled' } }
+        );
+      }
+
+      if (seatsToRelease.length) {
+        await releaseSeatsAndNotifyWaitlist(group.show, seatsToRelease);
+      }
+
+      group.status = 'expired';
+      await group.save();
+
+      logger.info({ groupBookingId, releasedCount: seatsToRelease.length }, 'Group booking expired, unclaimed/unpaid seats released');
+    })
+  }
+)
+
+const sendWaitlistOffer = inngest.createFunction(
+  { id: 'send-waitlist-offer' },
+  { event: 'app/waitlist.offer' },
+  async ({ event, step }) => {
+    const { waitlistEntryId, showId, seat, offerExpiresAt } = event.data;
+
+    await step.run('send-claim-email', async () => {
+      const entry = await Waitlist.findById(waitlistEntryId);
+      if (!entry || entry.status !== 'offered') return; 
+
+      const [user, show] = await Promise.all([
+        User.findById(entry.userId),
+        Show.findById(showId).populate('movie').populate(SCREEN_WITH_THEATER),
+      ]);
+      if (!user || !show) return;
+
+      const { date: showDate, time: showTime } = formatInZone(show.showDateTime, show.screen?.theater?.timezone);
+      const claimUrl = `${process.env.CLIENT_URL}/waitlist/${entry._id}/claim`;
+
+      await sendEmail({
+        to: user.email,
+        subject: `A seat opened up for "${show.movie.title}"!`,
+        body: renderEmail({
+          greetingName: user.name,
+          bodyHtml: `
+            <p>Good news, a seat (${highlight(seat)}) just became available for
+               ${highlight(`"${show.movie.title}"`)} on <strong>${showDate}</strong> at <strong>${showTime}</strong>.</p>
+            <p>This offer is reserved for you for the next ${CLAIM_WINDOW_MINUTES} minutes only.</p>
+            <p><a href="${claimUrl}">Click here to claim your seat</a> before the offer expires.</p>
+          `,
+          closingLine: 'First come, first served — claim fast!',
+        }),
+      });
+    });
+
+    await step.sleepUntil('wait-until-offer-expiry', new Date(offerExpiresAt));
+
+    await step.run('expire-offer-if-unclaimed', async () => {
+      const entry = await Waitlist.findOneAndUpdate(
+        { _id: waitlistEntryId, status: 'offered' },
+        { $set: { status: 'expired' } },
+        { new: true }
+      );
+      if (!entry) return;
+
+      await releaseSeatsAtomic(entry.showId, [entry.offeredSeat]);
+      await offerSeatsToWaitlist(entry.showId, [entry.offeredSeat]);
+
+      logger.info({ waitlistEntryId, showId: entry.showId, seat: entry.offeredSeat }, 'Waitlist offer expired, cycling to next entry');
+    });
   }
 )
 
@@ -273,4 +373,4 @@ const sendNewShowNotification = inngest.createFunction(
   }
 )
 
-export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdation, releaseSeatsAndDeleteBooking , sendBookingConfirmationEmail , sendShowReminders , sendNewShowNotification];
+export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdation, releaseSeatsAndDeleteBooking , sendBookingConfirmationEmail , sendShowReminders , sendNewShowNotification, expireGroupBooking, sendWaitlistOffer];
