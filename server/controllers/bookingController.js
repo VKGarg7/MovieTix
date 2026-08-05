@@ -376,9 +376,9 @@ export const verifyBookingPickup = asyncHandler(async(req, res) => {
         throw new AppError('Invalid or tampered pickup code', 400, 'INVALID_PICKUP_TOKEN');
     }
 
-    const booking = await Booking.findById(bookingId).populate({
+    const booking = await Booking.findById(bookingId).populate('user').populate({
         path: 'show',
-        populate: SCREEN_WITH_THEATER,
+        populate: [{ path: 'movie' }, SCREEN_WITH_THEATER],
     });
     if (!booking) {
         throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
@@ -393,6 +393,20 @@ export const verifyBookingPickup = asyncHandler(async(req, res) => {
         throw new AppError('This booking has no concession pre-order', 400, 'NO_SNACKS_ORDERED');
     }
 
+    const orderSummary = {
+        bookingId: booking._id.toString(),
+        customerName: booking.user?.name || 'Unknown customer',
+        customerImage: booking.user?.image || null,
+        movieTitle: booking.show?.movie?.title || null,
+        theaterName: booking.show?.screen?.theater?.name || null,
+        screenName: booking.show?.screen?.name || null,
+        showDateTime: booking.show?.showDateTime || null,
+        seats: booking.bookedSeats,
+        amount: booking.amount,
+        snacksAmount: booking.snacksAmount,
+        createdAt: booking.createdAt,
+    };
+
     const updated = await Booking.findOneAndUpdate(
         { _id: bookingId, concessionPickedUp: false },
         { $set: { concessionPickedUp: true } },
@@ -404,7 +418,7 @@ export const verifyBookingPickup = asyncHandler(async(req, res) => {
     }
 
     req.log.info({ bookingId }, 'Concession order picked up');
-    res.json({ success: true, message: 'Pickup confirmed', snacks: updated.snacks });
+    res.json({ success: true, message: 'Pickup confirmed', snacks: updated.snacks, order: orderSummary });
 });
 
 

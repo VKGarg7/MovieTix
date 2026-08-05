@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
-import MovieCard from "./MovieCard";
-import BlurCircle from "./BlurCircle";
+import SectionHeader from "./cinematic/SectionHeader";
+import AIBadge from "./cinematic/AIBadge";
+import RecommendationCard from "./cinematic/RecommendationCard";
+import FeaturedRecommendation from "./cinematic/FeaturedRecommendation";
 import { useAppContext } from "../context/useAppContext";
+
+const FEATURED_EVERY = 3;
 
 const RecommendedSection = () => {
   const { axios, getToken, user } = useAppContext();
@@ -33,16 +37,27 @@ const RecommendedSection = () => {
   if (!user || recommendations.length === 0) return null;
 
   return (
-    <div className="relative px-6 md:px-16 lg:px-24 xl:px-44 overflow-hidden pt-20 pb-10">
-      <BlurCircle top="0" left="-80px" />
-      <p className="text-gray-300 font-medium text-lg mb-8">Recommended for you</p>
+    <div className="relative px-6 md:px-16 lg:px-24 xl:px-44 overflow-hidden pt-40 pb-16">
+      <div className="mb-6">
+        <AIBadge />
+      </div>
+      <SectionHeader
+        eyebrow="Curated For You"
+        title="Recommended"
+        subtitle="AI Curated Picks Based On Your Taste"
+      />
+      <p className="text-sm text-gray-400 font-light -mt-4 mb-12 max-w-lg">
+        Ranked from your booking and follow history — the closer the genre overlap, the higher the match.
+      </p>
 
-      <div className="flex flex-wrap max-sm:justify-center gap-8">
-        {recommendations.map(({ movie, reason }) => (
-          <div key={movie._id} className="flex flex-col gap-2">
-            <MovieCard movie={movie} />
-            <p className="text-xs text-gray-400 max-w-66">{reason}</p>
-          </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        {recommendations.map((rec, i) => (
+          <React.Fragment key={rec.movie._id}>
+            {i > 0 && i % FEATURED_EVERY === 0 && (
+              <FeaturedRecommendation movie={rec.movie} reason={rec.reason} matchPercent={rec.matchPercent} />
+            )}
+            <RecommendationCard movie={rec.movie} reason={rec.reason} matchPercent={rec.matchPercent} index={i} />
+          </React.Fragment>
         ))}
       </div>
     </div>

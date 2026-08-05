@@ -1,17 +1,20 @@
 import React, { useEffect, useState } from "react";
-import { assets } from "../assets/assets";
+import { motion } from "framer-motion";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import Loading from "../components/Loading";
 import isoTimeFormat from "../lib/isoTimeFormat";
 import { ArrowRightIcon, ClockIcon, Users, Vote, EyeOffIcon, TrendingDownIcon } from "lucide-react";
-import BlurCircle from "../components/BlurCircle";
 import { toast } from "react-hot-toast";
 import { useAppContext } from "../context/useAppContext";
 import SeatGrid, { SeatTypeLegend } from "../components/SeatGrid";
 import PillOptionSelector from "../components/PillOptionSelector";
 import ViewFromSeatPreview from "../components/ViewFromSeatPreview";
+import CinemaScreen from "../components/cinematic/CinemaScreen";
+import BookingSummary from "../components/cinematic/BookingSummary";
+import RevealSection from "../components/cinematic/RevealSection";
 import { findBestAvailableSeats } from "../lib/bestAvailableSeats";
 import { bandForRowIndex, resolveViewFromSeatUrl } from "../lib/viewFromSeat";
+import { playConfirm } from "../lib/soundEngine";
 
 const currency = import.meta.env.VITE_CURRENCY;
 const MAX_SEATS_PER_BOOKING = 5;
@@ -49,8 +52,6 @@ const SeatLayout = () => {
   const [useBingePassCredit, setUseBingePassCredit] = useState(false);
 
   const {axios , getToken , user , selectedTheater , fetchShowDetails} = useAppContext();
-
-  // const navigate = useNavigate();
 
   const getShow = async () => {
     const data = await fetchShowDetails(id, selectedTheater?._id);
@@ -113,7 +114,7 @@ const SeatLayout = () => {
     }
     if( occupiedSeats.includes(seatId)){
       return toast("This seat is already occupied");
-    } 
+    }
     setSelectedSeats((prev) =>
       prev.includes(seatId)
         ? prev.filter((seat) => seat !== seatId)
@@ -132,7 +133,7 @@ const SeatLayout = () => {
       }else{
         toast.error(data.message)
       }
-      
+
     } catch (error) {
       console.log(error);
     }
@@ -221,6 +222,7 @@ const SeatLayout = () => {
   const bingePassDiscount = useBingePassCredit
     ? Math.min(ticketAmountAfterCoupon, selectedTime ? selectedTime.computedPrice * selectedSeats.length : 0)
     : 0;
+  const total = Math.max(0, ticketAmountAfterCoupon - pointsDiscount - bingePassDiscount) + snacksTotal;
 
   const applyPoints = () => {
     const requested = parseInt(redeemPointsInput, 10);
@@ -252,6 +254,7 @@ const SeatLayout = () => {
 
       if(data.success){
         if (data.isPaid) {
+          playConfirm();
           toast.success("Booking confirmed with Binge Pass credit!");
           navigate("/my-bookings");
         } else if (data.url) {
@@ -373,21 +376,27 @@ const SeatLayout = () => {
     setWatchPriceLoading(false);
   };
 
-  return show ? (
-    <div className="flex flex-col md:flex-row px-6 md:px-16 lg:px-40 py-30 md:pt-50">
-      {/*available timings*/}
-      <div className="w-60 bg-primary/10 border border-primary/20 rounded-lg py-10 h-max md:sticky md:top-30">
-        <p className="text-lg font-semibold px-6">Available Timings</p>
+  if (!show) return <Loading />;
+
+  return (
+    <div className="flex flex-col md:flex-row gap-8 px-6 md:px-16 lg:px-40 pt-36 pb-24 md:pt-52">
+      <motion.div
+        initial={{ opacity: 0, x: -30 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full md:w-64 glass-panel py-8 h-max md:sticky md:top-32 shrink-0"
+      >
+        <p className="text-lg font-display font-medium px-6">Available Timings</p>
         <div className="mt-5 space-y-1">
           {show.dateTime[date].map((item) => (
             <div
               key={item.time}
               onClick={() => setSelectedTime(item)}
-              className={`flex items-center gap-2 px-6 py-2 w-max rounded-r-md cursor-pointer transition 
+              className={`flex items-center gap-2 px-6 py-2.5 w-max rounded-r-full cursor-pointer transition-colors
                 ${
                   selectedTime?.time === item.time
-                    ? "bg-primary text-white"
-                    : "hover:bg-primary/20"
+                    ? "bg-primary text-white shadow-[0_0_20px_-6px_rgba(248,69,101,0.8)]"
+                    : "hover:bg-white/[0.06]"
                 }`}
             >
               <ClockIcon className="w-4 h-4" />
@@ -407,20 +416,25 @@ const SeatLayout = () => {
               onClick={handleToggleWatchPrice}
               disabled={watchPriceLoading}
               title={isWatchingPrice ? "Stop watching this show's price" : "Get an email if this show's price drops"}
-              className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full px-3 py-1.5 hover:bg-primary/10 cursor-pointer transition disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full px-3 py-1.5 hover:bg-primary/10 cursor-pointer transition-colors disabled:opacity-50"
             >
               <TrendingDownIcon className={`w-3.5 h-3.5 ${isWatchingPrice ? "text-primary" : ""}`} />
               {isWatchingPrice ? `Watching (${currency}${watchedPrice})` : "Watch Price"}
             </button>
           </div>
         )}
-      </div>
+      </motion.div>
 
       {/*seat layout*/}
-      <div className="relative flex-1 flex flex-col items-center max-md:mt-16">
-        <BlurCircle top="-100px" left="-100px" />
-        <BlurCircle bottom="0px" right="0px" />
-        <h1 className="text-2xl font-semibold mb-4">Select your seat</h1>
+      <div className="relative flex-1 flex flex-col items-center">
+        <motion.h1
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.1 }}
+          className="text-3xl font-display font-medium mb-2"
+        >
+          Select Your Seat
+        </motion.h1>
 
         {show.movie?.isMysteryMovie && (
           <div className="flex items-center gap-2 mb-4 px-4 py-2 text-xs bg-primary/10 border border-primary/30 rounded-full text-primary">
@@ -429,28 +443,27 @@ const SeatLayout = () => {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-8">
           <button
             onClick={() => navigate(`/movies/${id}/${date}/group-booking`)}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full hover:bg-primary/10 cursor-pointer transition"
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full hover:bg-primary/10 cursor-pointer transition-colors"
           >
             <Users className="w-3.5 h-3.5" />
             Start a Watch Party instead
           </button>
           <button
             onClick={() => navigate(`/movies/${id}/showtime-poll`)}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full hover:bg-primary/10 cursor-pointer transition"
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full hover:bg-primary/10 cursor-pointer transition-colors"
           >
             <Vote className="w-3.5 h-3.5" />
             Poll friends on a time first
           </button>
         </div>
 
-        <img src={assets.screenImage} alt="screen" />
-        <p className="text-gray-400 text-sm mb-6">SCREEN SIDE</p>
+        <CinemaScreen />
 
         {selectedTime?.isSoldOut ? (
-          <div className="mt-6 w-full max-w-sm flex flex-col items-center gap-3 bg-red-950/30 border border-red-500/30 rounded-lg px-6 py-5 text-center">
+          <div className="mt-6 w-full max-w-sm flex flex-col items-center gap-3 bg-red-950/30 border border-red-500/30 rounded-2xl px-6 py-5 text-center backdrop-blur-xl">
             <p className="text-sm font-medium text-red-400">This show is sold out</p>
             <button
               onClick={handleJoinWaitlist}
@@ -465,7 +478,7 @@ const SeatLayout = () => {
             {selectedTime?.screen?.rows?.length > 0 && <SeatTypeLegend />}
 
             {selectedTime?.screen?.rows?.length > 0 && (
-              <div className="flex flex-col items-center gap-2 mt-4 text-sm">
+              <div className="flex flex-col items-center gap-2 mt-5 text-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-gray-400 text-xs">Seats:</span>
                   <PillOptionSelector
@@ -512,24 +525,24 @@ const SeatLayout = () => {
         )}
 
         {selectedSeats.length > 0 && menuItems.length > 0 && (
-          <div className="mt-16 w-full max-w-xs">
-            <p className="text-sm font-semibold mb-2">Add snacks</p>
+          <RevealSection className="mt-16 w-full max-w-xs" y={20}>
+            <p className="text-sm font-semibold mb-3">Add snacks</p>
             <div className="flex flex-col gap-2">
               {menuItems.map((item) => (
-                <div key={item._id} className="flex items-center justify-between text-sm bg-primary/10 border border-primary/20 rounded px-3 py-2">
+                <div key={item._id} className="flex items-center justify-between text-sm glass-panel px-4 py-2.5">
                   <span>{item.name} <span className="text-gray-400">({currency}{item.price})</span></span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => changeSnackQuantity(item._id, -1)}
                       disabled={!snackQuantities[item._id]}
-                      className="w-6 h-6 rounded border border-primary/40 cursor-pointer disabled:opacity-30"
+                      className="w-6 h-6 rounded border border-white/15 cursor-pointer disabled:opacity-30"
                     >
                       -
                     </button>
                     <span className="w-4 text-center">{snackQuantities[item._id] || 0}</span>
                     <button
                       onClick={() => changeSnackQuantity(item._id, 1)}
-                      className="w-6 h-6 rounded border border-primary/40 cursor-pointer"
+                      className="w-6 h-6 rounded border border-white/15 cursor-pointer"
                     >
                       +
                     </button>
@@ -537,50 +550,11 @@ const SeatLayout = () => {
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {selectedSeats.length > 0 && selectedTime && (
-          <div className="mt-8 w-full max-w-xs text-sm">
-            <div className="flex items-center justify-between text-gray-300">
-              <span>
-                {selectedSeats.length} seat{selectedSeats.length > 1 ? "s" : ""} &times; {currency}{selectedTime.computedPrice}
-                {selectedTime.computedPrice !== selectedTime.showPrice && (
-                  <span className="text-primary text-xs ml-1">(dynamic price)</span>
-                )}
-              </span>
-              <span>{currency}{ticketAmount}</span>
-            </div>
-            {snacksTotal > 0 && (
-              <div className="flex items-center justify-between text-gray-300 mt-1">
-                <span>Snacks</span>
-                <span>{currency}{snacksTotal}</span>
-              </div>
-            )}
-            {pointsDiscount > 0 && (
-              <div className="flex items-center justify-between text-primary mt-1">
-                <span>Points redeemed ({pointsToRedeem})</span>
-                <span>-{currency}{pointsDiscount}</span>
-              </div>
-            )}
-            {bingePassDiscount > 0 && (
-              <div className="flex items-center justify-between text-primary mt-1">
-                <span>Binge Pass credit</span>
-                <span>-{currency}{bingePassDiscount}</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between font-semibold mt-1 pt-1 border-t border-primary/20">
-              <span>Total</span>
-              <span>
-                {currency}
-                {Math.max(0, ticketAmountAfterCoupon - pointsDiscount - bingePassDiscount) + snacksTotal}
-              </span>
-            </div>
-          </div>
+          </RevealSection>
         )}
 
         {selectedSeats.length > 0 && bingePassEligibility?.eligible && (
-          <div className="mt-4 w-full max-w-xs">
+          <div className="mt-6 w-full max-w-xs">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
@@ -601,12 +575,12 @@ const SeatLayout = () => {
         {selectedSeats.length > 0 && (
           <div className="mt-4 w-full max-w-xs">
             {appliedCoupon ? (
-              <div className="flex items-center justify-between bg-primary/10 border border-primary/30 rounded px-4 py-2 text-sm">
+              <div className="flex items-center justify-between glass-panel px-4 py-2.5 text-sm">
                 <span>
                   <span className="font-medium text-primary">{appliedCoupon.code}</span> applied — saved{" "}
                   {appliedCoupon.discountAmount}
                 </span>
-                <button onClick={removeCoupon} className="text-gray-400 text-xs cursor-pointer">
+                <button onClick={removeCoupon} className="text-gray-400 text-xs cursor-pointer hover:text-white transition-colors">
                   Remove
                 </button>
               </div>
@@ -617,12 +591,12 @@ const SeatLayout = () => {
                   placeholder="Coupon code"
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value)}
-                  className="flex-1 bg-primary/10 border border-primary/30 rounded px-3 py-2 text-sm outline-none"
+                  className="flex-1 glass-input"
                 />
                 <button
                   onClick={applyCoupon}
                   disabled={couponLoading}
-                  className="px-4 py-2 text-sm bg-primary rounded cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 text-sm bg-white/10 hover:bg-primary transition-colors rounded-full cursor-pointer disabled:opacity-50"
                 >
                   Apply
                 </button>
@@ -634,11 +608,11 @@ const SeatLayout = () => {
         {selectedSeats.length > 0 && pointsBalance > 0 && (
           <div className="mt-3 w-full max-w-xs">
             {pointsToRedeem > 0 ? (
-              <div className="flex items-center justify-between bg-primary/10 border border-primary/30 rounded px-4 py-2 text-sm">
+              <div className="flex items-center justify-between glass-panel px-4 py-2.5 text-sm">
                 <span>
                   <span className="font-medium text-primary">{pointsToRedeem} points</span> applied
                 </span>
-                <button onClick={removePoints} className="text-gray-400 text-xs cursor-pointer">
+                <button onClick={removePoints} className="text-gray-400 text-xs cursor-pointer hover:text-white transition-colors">
                   Remove
                 </button>
               </div>
@@ -651,11 +625,11 @@ const SeatLayout = () => {
                   placeholder={`Redeem points (${pointsBalance} available)`}
                   value={redeemPointsInput}
                   onChange={(e) => setRedeemPointsInput(e.target.value)}
-                  className="flex-1 bg-primary/10 border border-primary/30 rounded px-3 py-2 text-sm outline-none"
+                  className="flex-1 glass-input"
                 />
                 <button
                   onClick={applyPoints}
-                  className="px-4 py-2 text-sm bg-primary rounded cursor-pointer"
+                  className="px-5 py-2.5 text-sm bg-white/10 hover:bg-primary transition-colors rounded-full cursor-pointer"
                 >
                   Apply
                 </button>
@@ -664,19 +638,24 @@ const SeatLayout = () => {
           </div>
         )}
 
-        {!selectedTime?.isSoldOut && (
-          <button
-            onClick={bookTickets}
-            className="flex items-center gap-1 mt-6 px-10 py-3 text-sm bg-primary cursor-pointer active:scale-95"
-          >
-            Proceed to Checkout
-            <ArrowRightIcon strokeWidth={3} className="w-4 h-4" />
-          </button>
-        )}
+        {/* floating live booking summary */}
+        <div className="mt-8 flex justify-center">
+          <BookingSummary
+            selectedSeats={selectedSeats}
+            selectedTime={selectedTime}
+            ticketAmount={ticketAmount}
+            snacksTotal={snacksTotal}
+            pointsDiscount={pointsDiscount}
+            pointsToRedeem={pointsToRedeem}
+            bingePassDiscount={bingePassDiscount}
+            appliedCoupon={appliedCoupon}
+            total={total}
+            onCheckout={bookTickets}
+            disabled={selectedTime?.isSoldOut}
+          />
+        </div>
       </div>
     </div>
-  ) : (
-    <Loading />
   );
 };
 

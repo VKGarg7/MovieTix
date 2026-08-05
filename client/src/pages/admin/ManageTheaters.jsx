@@ -1,48 +1,42 @@
-import React, { useEffect, useState } from 'react';
-import { PlusIcon, TrashIcon } from 'lucide-react';
-import Title from '../../components/admin/Title';
-import Select from '../../components/admin/Select';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import SuperAdminGate from '../../components/admin/SuperAdminGate';
 import { useAppContext } from '../../context/useAppContext';
 import useFetchOnUser from '../../hooks/useFetchOnUser';
-import { ADMIN_INPUT_CLASS, ADMIN_SUBMIT_BTN_CLASS } from '../../lib/adminStyles';
 import toast from 'react-hot-toast';
 
-const SEAT_TYPE_OPTIONS = [
-  { value: 'regular', label: 'Regular' },
-  { value: 'premium', label: 'Premium' },
-  { value: 'recliner', label: 'Recliner' },
-  { value: 'accessible', label: 'Accessible' },
-];
+import InfrastructureHeader from '../../components/admin/theaters/InfrastructureHeader';
+import CreateTheaterCard from '../../components/admin/theaters/CreateTheaterCard';
+import AdminTheaterCard from '../../components/admin/theaters/AdminTheaterCard';
+import TheaterSummaryPanel from '../../components/admin/theaters/TheaterSummaryPanel';
+import CreateScreenCard from '../../components/admin/theaters/CreateScreenCard';
+import SeatLayoutBuilder from '../../components/admin/theaters/SeatLayoutBuilder';
+import SeatMapLivePreview from '../../components/admin/theaters/SeatMapLivePreview';
+import ViewFromSeatUploader from '../../components/admin/theaters/ViewFromSeatUploader';
+import ScreenSummaryStats from '../../components/admin/theaters/ScreenSummaryStats';
+import ExistingScreensList from '../../components/admin/theaters/ExistingScreensList';
+import { emptyRow } from '../../lib/seatLayoutBuilder';
 
 const emptyTheaterForm = {
-  name: '',
-  city: '',
-  address: '',
-  contactEmail: '',
-  timezone: 'Asia/Kolkata',
-  lat: '',
-  lng: '',
+  name: '', city: '', address: '', contactEmail: '', timezone: 'Asia/Kolkata', lat: '', lng: '',
 };
 
-const emptyRow = () => ({ label: '', seatCount: '', seatType: 'regular' });
-
-const VIEW_FROM_SEAT_BANDS = [
-  { key: 'front', label: 'Front rows' },
-  { key: 'middle', label: 'Middle rows' },
-  { key: 'back', label: 'Back rows' },
-];
-
-const ManageTheaters = () => {
-  const { axios, user, adminRole, fetchTheaters, fetchScreens } = useAppContext();
+const ManageTheatersInner = () => {
+  const { axios, user, fetchTheaters, fetchScreens } = useAppContext();
+  const navigate = useNavigate();
+  const currency = import.meta.env.VITE_CURRENCY;
 
   const [theaters, setTheaters] = useState([]);
   const [theaterForm, setTheaterForm] = useState(emptyTheaterForm);
   const [creatingTheater, setCreatingTheater] = useState(false);
+  const [pulseShows, setPulseShows] = useState([]);
 
   const [selectedTheaterId, setSelectedTheaterId] = useState('');
   const [screens, setScreens] = useState([]);
   const [screenName, setScreenName] = useState('');
+  const [projection, setProjection] = useState('2D');
+  const [audio, setAudio] = useState('Standard');
   const [rows, setRows] = useState([emptyRow()]);
   const [viewFromSeat, setViewFromSeat] = useState({ front: '', middle: '', back: '' });
   const [creatingScreen, setCreatingScreen] = useState(false);
@@ -55,6 +49,13 @@ const ManageTheaters = () => {
   useFetchOnUser(user, loadTheaters);
 
   useEffect(() => {
+    if (!user) return;
+    axios.get('/api/admin/occupancy-pulse')
+      .then(({ data }) => { if (data.success) setPulseShows(data.shows); })
+      .catch(() => {});
+  }, [axios, user]);
+
+  useEffect(() => {
     if (!selectedTheaterId) {
       setScreens([]);
       return;
@@ -62,7 +63,29 @@ const ManageTheaters = () => {
     fetchScreens(selectedTheaterId).then(setScreens);
   }, [selectedTheaterId, fetchScreens]);
 
-  const handleCreateTheater = async () => {
+  const theaterStats = useMemo(() => {
+    const todayStr = new Date().toDateString();
+    const map = {};
+    pulseShows.forEach((s) => {
+      const tid = s.theaterId?.toString?.() || s.theaterId;
+      if (!tid) return;
+      if (!map[tid]) map[tid] = { showsToday: 0, revenueToday: 0 };
+      if (new Date(s.showDateTime).toDateString() === todayStr) {
+        map[tid].showsToday += 1;
+        map[tid].revenueToday += s.revenue || 0;
+      }
+    });
+    return map;
+  }, [pulseShows]);
+
+  const screenCountByTheater = useMemo(() => {
+    // Only the selected theater's screens are loaded; approximate others as unknown until selected.
+    if (!selectedTheaterId) return {};
+    return { [selectedTheaterId]: screens.length };
+  }, [selectedTheaterId, screens]);
+
+  const handleCreateTheater = async (e) => {
+    e.preventDefault();
     const { name, city, address, contactEmail, timezone, lat, lng } = theaterForm;
 
     if (!name || !city || !address || !contactEmail || !timezone || lat === '' || lng === '') {
@@ -90,13 +113,19 @@ const ManageTheaters = () => {
   };
 
   const updateRow = (index, field, value) => {
-    setRows(prev => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+    setRows((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
   };
+  const addRow = () => setRows((prev) => [...prev, emptyRow(prev)]);
+  const duplicateRow = (index) => setRows((prev) => {
+    const copy = { ...prev[index] };
+    const next = [...prev];
+    next.splice(index + 1, 0, { ...copy, label: emptyRow(prev).label });
+    return next;
+  });
+  const removeRow = (index) => setRows((prev) => prev.filter((_, i) => i !== index));
 
-  const addRow = () => setRows(prev => [...prev, emptyRow()]);
-  const removeRow = (index) => setRows(prev => prev.filter((_, i) => i !== index));
-
-  const handleCreateScreen = async () => {
+  const handleCreateScreen = async (e) => {
+    e.preventDefault();
     if (!selectedTheaterId) return toast.error('Select a theater first');
     if (!screenName) return toast.error('Screen name is required');
     if (rows.length === 0) return toast.error('At least one row is required');
@@ -115,11 +144,11 @@ const ManageTheaters = () => {
       const { data } = await axios.post('/api/screen', {
         theaterId: selectedTheaterId,
         name: screenName,
-        rows: rows.map(r => ({ label: r.label, seatCount: Number(r.seatCount), seatType: r.seatType })),
+        rows: rows.map((r) => ({ label: r.label, seatCount: Number(r.seatCount), seatType: r.seatType })),
         viewFromSeat: {
-          front: viewFromSeat.front.trim() || null,
-          middle: viewFromSeat.middle.trim() || null,
-          back: viewFromSeat.back.trim() || null,
+          front: viewFromSeat.front || null,
+          middle: viewFromSeat.middle || null,
+          back: viewFromSeat.back || null,
         },
       });
 
@@ -138,6 +167,118 @@ const ManageTheaters = () => {
     setCreatingScreen(false);
   };
 
+  const selectedTheater = theaters.find((t) => t._id === selectedTheaterId) || null;
+  const totalSeats = screens.reduce((sum, s) => sum + (s.totalCapacity || 0), 0);
+  const showsToday = theaterStats[selectedTheaterId]?.showsToday || 0;
+
+  const handleImport = () => toast('Bulk theater import coming soon', { icon: '🚧' });
+  const handleExport = () => {
+    const rows2 = [
+      ['Name', 'City', 'Address', 'Email', 'Timezone', 'Active'],
+      ...theaters.map((t) => [t.name, t.city, t.address, t.contactEmail, t.timezone, t.isActive !== false ? 'Active' : 'Inactive']),
+    ];
+    const csv = rows2.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `theaters-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('CSV exported');
+  };
+
+  const scrollToCreateTheater = () => document.getElementById('create-theater-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  return (
+    <div className="space-y-5 pb-10">
+      <InfrastructureHeader onNewTheater={scrollToCreateTheater} onImport={handleImport} onExport={handleExport} />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+        <div className="space-y-5">
+          <div id="create-theater-panel">
+            <CreateTheaterCard form={theaterForm} setForm={setTheaterForm} onSubmit={handleCreateTheater} creating={creatingTheater} />
+          </div>
+
+          {theaters.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-gray-300 mb-3 px-1">Theater Management</p>
+              <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {theaters.map((theater, i) => (
+                  <AdminTheaterCard
+                    key={theater._id}
+                    theater={theater}
+                    i={i}
+                    currency={currency}
+                    screenCount={screenCountByTheater[theater._id] ?? (theater._id === selectedTheaterId ? screens.length : '—')}
+                    showsToday={theaterStats[theater._id]?.showsToday ?? 0}
+                    revenueToday={theaterStats[theater._id]?.revenueToday ?? 0}
+                    selected={selectedTheaterId === theater._id}
+                    onSelect={() => setSelectedTheaterId(theater._id)}
+                    onManageScreens={(t) => setSelectedTheaterId(t._id)}
+                    onAnalytics={() => navigate('/admin/dashboard')}
+                    onEdit={() => toast('Theater editing coming soon', { icon: '🚧' })}
+                    onDelete={() => toast('Theater deletion coming soon', { icon: '🚧' })}
+                  />
+                ))}
+              </motion.div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-5">
+          <TheaterSummaryPanel theater={selectedTheater} screenCount={screens.length} totalSeats={totalSeats} showsToday={showsToday} />
+
+          {selectedTheaterId && (
+            <>
+              <ExistingScreensList screens={screens} />
+
+              <CreateScreenCard
+                screenName={screenName}
+                setScreenName={setScreenName}
+                projection={projection}
+                setProjection={setProjection}
+                audio={audio}
+                setAudio={setAudio}
+              />
+
+              <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5 items-start">
+                <SeatLayoutBuilder
+                  rows={rows}
+                  onUpdateRow={updateRow}
+                  onAddRow={addRow}
+                  onDuplicateRow={duplicateRow}
+                  onDeleteRow={removeRow}
+                />
+                <SeatMapLivePreview rows={rows} screenName={screenName} />
+              </div>
+
+              <ScreenSummaryStats rows={rows} />
+
+              <div className="glass-panel !rounded-3xl p-5 md:p-6">
+                <ViewFromSeatUploader viewFromSeat={viewFromSeat} setViewFromSeat={setViewFromSeat} />
+
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleCreateScreen}
+                  disabled={creatingScreen}
+                  className="btn-glow w-full mt-5 flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium bg-gradient-to-r from-primary via-nebula-magenta to-nebula-violet text-white disabled:opacity-50 cursor-pointer"
+                >
+                  {creatingScreen ? 'Creating…' : 'Create Screen'}
+                </motion.button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ManageTheaters = () => {
+  const { adminRole } = useAppContext();
   return (
     <SuperAdminGate
       adminRole={adminRole}
@@ -145,169 +286,7 @@ const ManageTheaters = () => {
       text2="Theaters"
       message="Only super-admins can create theaters or screens."
     >
-      <Title text1="Manage" text2="Theaters" />
-
-      {/* create theater */}
-      <div className="mt-6 max-w-2xl">
-        <p className="text-lg font-medium mb-3">New Theater</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input
-            className={ADMIN_INPUT_CLASS}
-            placeholder="Name"
-            value={theaterForm.name}
-            onChange={(e) => setTheaterForm(f => ({ ...f, name: e.target.value }))}
-          />
-          <input
-            className={ADMIN_INPUT_CLASS}
-            placeholder="City"
-            value={theaterForm.city}
-            onChange={(e) => setTheaterForm(f => ({ ...f, city: e.target.value }))}
-          />
-          <input
-            className={`${ADMIN_INPUT_CLASS} sm:col-span-2`}
-            placeholder="Address"
-            value={theaterForm.address}
-            onChange={(e) => setTheaterForm(f => ({ ...f, address: e.target.value }))}
-          />
-          <input
-            className={ADMIN_INPUT_CLASS}
-            placeholder="Contact Email"
-            type="email"
-            value={theaterForm.contactEmail}
-            onChange={(e) => setTheaterForm(f => ({ ...f, contactEmail: e.target.value }))}
-          />
-          <input
-            className={ADMIN_INPUT_CLASS}
-            placeholder="Timezone (e.g. Asia/Kolkata)"
-            value={theaterForm.timezone}
-            onChange={(e) => setTheaterForm(f => ({ ...f, timezone: e.target.value }))}
-          />
-          <input
-            className={ADMIN_INPUT_CLASS}
-            placeholder="Latitude"
-            type="number"
-            value={theaterForm.lat}
-            onChange={(e) => setTheaterForm(f => ({ ...f, lat: e.target.value }))}
-          />
-          <input
-            className={ADMIN_INPUT_CLASS}
-            placeholder="Longitude"
-            type="number"
-            value={theaterForm.lng}
-            onChange={(e) => setTheaterForm(f => ({ ...f, lng: e.target.value }))}
-          />
-        </div>
-        <button
-          onClick={handleCreateTheater}
-          disabled={creatingTheater}
-          className={`${ADMIN_SUBMIT_BTN_CLASS} mt-4`}
-        >
-          {creatingTheater ? 'Creating...' : 'Create Theater'}
-        </button>
-      </div>
-
-      {/* create screen */}
-      <div className="mt-10 max-w-2xl">
-        <p className="text-lg font-medium mb-3">New Screen</p>
-
-        <Select
-          value={selectedTheaterId}
-          onChange={(e) => setSelectedTheaterId(e.target.value)}
-          options={[
-            { value: '', label: 'Select a theater' },
-            ...theaters.map(t => ({ value: t._id, label: `${t.name} — ${t.city}` })),
-          ]}
-          className="w-full sm:w-80"
-        />
-
-        {selectedTheaterId && (
-          <>
-            {screens.length > 0 && (
-              <p className="text-sm text-gray-400 mt-3">
-                Existing screens: {screens.map(s => s.name).join(', ')}
-              </p>
-            )}
-
-            <input
-              className={`${ADMIN_INPUT_CLASS} mt-3 w-full sm:w-80`}
-              placeholder="Screen name (e.g. Screen 1)"
-              value={screenName}
-              onChange={(e) => setScreenName(e.target.value)}
-            />
-
-            <div className="mt-4 space-y-2">
-              {rows.map((row, index) => (
-                <div key={index} className="flex flex-wrap items-center gap-2">
-                  <input
-                    className={`${ADMIN_INPUT_CLASS} w-16`}
-                    placeholder="A"
-                    maxLength={1}
-                    value={row.label}
-                    onChange={(e) => updateRow(index, 'label', e.target.value.toUpperCase())}
-                  />
-                  <input
-                    className={`${ADMIN_INPUT_CLASS} w-24`}
-                    placeholder="Seats"
-                    type="number"
-                    min={1}
-                    max={50}
-                    value={row.seatCount}
-                    onChange={(e) => updateRow(index, 'seatCount', e.target.value)}
-                  />
-                  <Select
-                    value={row.seatType}
-                    onChange={(e) => updateRow(index, 'seatType', e.target.value)}
-                    options={SEAT_TYPE_OPTIONS}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeRow(index)}
-                    disabled={rows.length === 1}
-                    className="text-red-500 hover:text-rose-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    <TrashIcon className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={addRow}
-                className="flex items-center gap-1 text-sm text-primary hover:text-primary-dull mt-1"
-              >
-                <PlusIcon className="w-4 h-4" /> Add row
-              </button>
-            </div>
-
-            <p className="text-sm font-medium mt-6 mb-1">"View From Your Seat" preview images (optional)</p>
-            <p className="text-xs text-gray-400 mb-2">
-              A hosted image URL per row-band. Leave blank to skip — the seat map degrades gracefully
-              with a "no preview available" message. For small screens, filling only one band is fine;
-              it's shown for every row.
-            </p>
-            <div className="space-y-2">
-              {VIEW_FROM_SEAT_BANDS.map(({ key, label }) => (
-                <input
-                  key={key}
-                  className={`${ADMIN_INPUT_CLASS} w-full`}
-                  placeholder={`${label} image URL`}
-                  type="url"
-                  value={viewFromSeat[key]}
-                  onChange={(e) => setViewFromSeat((prev) => ({ ...prev, [key]: e.target.value }))}
-                />
-              ))}
-            </div>
-
-            <button
-              onClick={handleCreateScreen}
-              disabled={creatingScreen}
-              className={`${ADMIN_SUBMIT_BTN_CLASS} mt-4`}
-            >
-              {creatingScreen ? 'Creating...' : 'Create Screen'}
-            </button>
-          </>
-        )}
-      </div>
+      <ManageTheatersInner />
     </SuperAdminGate>
   );
 };

@@ -20,7 +20,11 @@ const recommendationRouter = express.Router();
  *       genre overlap exists with any candidate.
  *     responses:
  *       200:
- *         description: Up to 5 recommended movies, each with a plain-language reason
+ *         description: >
+ *           Up to 5 recommended movies, each with a plain-language reason and a
+ *           matchPercent (0-100) — the candidate's weighted genre-overlap score
+ *           normalized against the strongest match in this batch. Genre-less
+ *           fallback recommendations (rating-only ranking) get a flat 60.
  *         content:
  *           application/json:
  *             example:
@@ -28,6 +32,7 @@ const recommendationRouter = express.Router();
  *               recommendations:
  *                 - movie: { _id: "1234", title: "Example Movie" }
  *                   reason: "Because you liked Paper Moons (Drama)"
+ *                   matchPercent: 87
  *       401:
  *         $ref: '#/components/responses/Unauthenticated'
  *       500:

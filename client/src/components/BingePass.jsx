@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { useAppContext } from "../context/useAppContext";
 import { TicketIcon, ExternalLinkIcon } from "lucide-react";
 import toast from "react-hot-toast";
@@ -66,31 +67,41 @@ const BingePass = () => {
   const subscribed = status?.subscribed;
 
   return (
-    <div id="binge-pass" className="bg-primary/8 border border-primary/20 rounded-lg mb-6 p-4 max-w-3xl scroll-mt-24">
-      <div className="flex items-center gap-2 mb-2">
-        <TicketIcon className="w-5 h-5 text-primary" />
-        <p className="text-sm font-semibold">Binge Pass</p>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      id="binge-pass"
+      className="relative glass-panel p-5 mb-6 max-w-3xl scroll-mt-24 overflow-hidden"
+    >
+      <div className="absolute -top-16 -right-10 w-40 h-40 rounded-full blur-3xl opacity-25 pointer-events-none" style={{ background: "radial-gradient(circle, #FFB86B, transparent 70%)" }} />
+
+      <div className="flex items-center gap-2 mb-2 relative z-10">
+        <TicketIcon className="w-5 h-5 text-nebula-amber" />
+        <p className="text-sm font-medium font-display text-base">Binge Pass</p>
       </div>
 
       {!subscribed ? (
-        <>
-          <p className="text-sm text-gray-400">
+        <div className="relative z-10">
+          <p className="text-sm text-gray-400 font-light">
             Watch more for less — get {status?.creditsPerCycle || 4} movie credits every month
             for a flat monthly fee. Use a credit at checkout instead of paying per ticket.
           </p>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-gray-400 mt-1">
             Peak/premium showtimes excluded. Max 1 credit per showtime. Unused credits don't roll over.
           </p>
-          <button
+          <motion.button
+            whileHover={{ scale: 1.03, y: -2 }}
+            whileTap={{ scale: 0.96 }}
             onClick={handleSubscribe}
             disabled={isSubscribing}
-            className="mt-3 px-4 py-2 text-sm bg-primary rounded cursor-pointer disabled:opacity-50"
+            className="mt-3 px-5 py-2.5 text-sm bg-primary hover:bg-primary-dull transition-colors rounded-full cursor-pointer disabled:opacity-50"
           >
             {isSubscribing ? "Starting..." : "Subscribe to Binge Pass"}
-          </button>
-        </>
+          </motion.button>
+        </div>
       ) : (
-        <>
+        <div className="relative z-10">
           <div className="flex items-center gap-6 flex-wrap">
             <div>
               <p className="text-xs text-gray-400">Credits remaining</p>
@@ -113,22 +124,24 @@ const BingePass = () => {
             </div>
             {status.cancelAtPeriodEnd && (
               <div>
-                <p className="text-xs text-yellow-400">Cancels at period end</p>
-                <p className="text-sm text-yellow-400">You'll keep access until renewal date</p>
+                <p className="text-xs text-nebula-amber">Cancels at period end</p>
+                <p className="text-sm text-nebula-amber">You'll keep access until renewal date</p>
               </div>
             )}
           </div>
-          <button
+          <motion.button
+            whileHover={{ scale: 1.03, y: -2 }}
+            whileTap={{ scale: 0.96 }}
             onClick={handleManage}
             disabled={isManaging}
-            className="mt-3 flex items-center gap-1.5 px-4 py-2 text-sm border border-primary/40 text-primary rounded-full cursor-pointer disabled:opacity-50"
+            className="mt-3 flex items-center gap-1.5 px-4 py-2.5 text-sm border border-primary/40 text-primary rounded-full cursor-pointer disabled:opacity-50 hover:bg-primary/10 transition-colors"
           >
             <ExternalLinkIcon className="w-3.5 h-3.5" />
             {isManaging ? "Opening..." : "Manage / Cancel Subscription"}
-          </button>
-        </>
+          </motion.button>
+        </div>
       )}
-    </div>
+    </motion.div>
   );
 };
 

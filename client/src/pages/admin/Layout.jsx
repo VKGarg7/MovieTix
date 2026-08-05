@@ -14,7 +14,7 @@ const Layout = () => {
   })
 
   return isAdmin ? (
-    <>
+    <div className="bg-void min-h-screen">
       <AdminNavbar />
       <div className="flex">
         <AdminSidebar />
@@ -22,7 +22,7 @@ const Layout = () => {
           <Outlet />
         </div>
       </div>
-    </>
+    </div>
   ) : <Loading/>
 };
 

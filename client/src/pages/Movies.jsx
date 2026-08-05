@@ -1,12 +1,17 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useMotionValue, motion, useSpring, useTransform } from "framer-motion";
 import MovieCard from "../components/MovieCard";
-import BlurCircle from "../components/BlurCircle";
+import FlyInCard from "../components/cinematic/FlyInCard";
 import SearchInput from "../components/SearchInput";
+import PillOptionSelector from "../components/PillOptionSelector";
+import PageHeader from "../components/cinematic/PageHeader";
+import LoadMoreButton from "../components/cinematic/LoadMoreButton";
 import { useAppContext } from "../context/useAppContext";
 import useDebouncedSearch from "../hooks/useDebouncedSearch";
 
 const languageNames = new Intl.DisplayNames(["en"], { type: "language" });
+const PAGE_SIZE = 12;
 
 const Movies = () => {
 
@@ -18,6 +23,21 @@ const Movies = () => {
   const [selectedLanguages, setSelectedLanguages] = useState([]);
   const [tmdbResults, setTmdbResults] = useState([]);
   const [tmdbLoading, setTmdbLoading] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const rootRef = useRef(null);
+  const mx = useMotionValue(0.5);
+  const my = useMotionValue(0.5);
+  const smx = useSpring(mx, { stiffness: 50, damping: 22 });
+  const smy = useSpring(my, { stiffness: 50, damping: 22 });
+  const spotlightBg = useTransform([smx, smy], ([x, y]) => `radial-gradient(600px circle at ${x * 100}% ${y * 100}%, rgba(255,255,255,0.05), transparent 65%)`);
+
+  const handlePointerMove = (e) => {
+    const rect = rootRef.current.getBoundingClientRect();
+    mx.set((e.clientX - rect.left) / rect.width);
+    my.set((e.clientY - rect.top) / rect.height);
+  };
 
   useEffect(() => {
     const q = searchParams.get("q");
@@ -76,6 +96,21 @@ const Movies = () => {
   };
 
   useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [searchTerm, selectedGenres, selectedLanguages]);
+
+  const visibleShows = filteredShows.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredShows.length;
+
+  const handleLoadMore = () => {
+    setLoadingMore(true);
+    setTimeout(() => {
+      setVisibleCount((c) => c + PAGE_SIZE);
+      setLoadingMore(false);
+    }, 400);
+  };
+
+  useEffect(() => {
     if (searchTerm.length < 2 || filteredShows.length > 0) {
       setTmdbResults([]);
       return;
@@ -106,79 +141,75 @@ const Movies = () => {
   }, [searchTerm, filteredShows.length, axios]);
 
   return shows.length > 0 ? (
-    <div className="relative my-40 mb-60 px-6 md:px-16 lg:px-40 xl:px-44 overflow-hidden min-h-[80vh]">
-      <BlurCircle top="150px" left="0px"/>
-      <BlurCircle bottom="50px" right="50px"/>
-      <h1 className="text-lg font-medium my-4">Now Showing</h1>
+    <div
+      ref={rootRef}
+      onMouseMove={handlePointerMove}
+      className="relative pt-36 pb-32 px-6 md:px-16 lg:px-40 xl:px-44 min-h-[80vh]"
+    >
+      <motion.div className="absolute inset-0 -z-10 pointer-events-none" style={{ background: spotlightBg }} />
+
+      <PageHeader eyebrow="Browse" title="Now Showing" />
 
       <SearchInput
         value={searchInput}
         onChange={setSearchInput}
         onClear={() => setSearchInput("")}
-        placeholder="Search movies..."
+        suggestions={["Search movies...", "Try \"action\" or \"comedy\"...", "Search by title...", "What are you in the mood for?"]}
       />
 
       {genres.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-4">
-          {genres.map((genre) => (
-            <button
-              key={genre}
-              onClick={() => toggleGenre(genre)}
-              className={`px-3 py-1 rounded-full text-xs border transition ${
-                selectedGenres.includes(genre)
-                  ? "bg-primary border-primary text-white"
-                  : "border-gray-700 text-gray-300 hover:border-gray-500"
-              }`}
-            >
-              {genre}
-            </button>
-          ))}
+        <div className="mt-5">
+          <PillOptionSelector options={genres} value={selectedGenres} onChange={toggleGenre} multiple />
         </div>
       )}
 
       {languages.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {languages.map((lang) => (
-            <button
-              key={lang}
-              onClick={() => toggleLanguage(lang)}
-              className={`px-3 py-1 rounded-full text-xs border transition ${
-                selectedLanguages.includes(lang)
-                  ? "bg-primary border-primary text-white"
-                  : "border-gray-700 text-gray-300 hover:border-gray-500"
-              }`}
-            >
-              {(() => {
-                try {
-                  return languageNames.of(lang) ?? lang;
-                } catch {
-                  return lang;
-                }
-              })()}
-            </button>
-          ))}
+        <div className="mt-2.5">
+          <PillOptionSelector
+            options={languages}
+            value={selectedLanguages}
+            onChange={toggleLanguage}
+            multiple
+            renderLabel={(lang) => {
+              try {
+                return languageNames.of(lang) ?? lang;
+              } catch {
+                return lang;
+              }
+            }}
+          />
         </div>
       )}
 
       {hasActiveFilters && (
         <button
           onClick={clearFilters}
-          className="mt-3 text-xs text-gray-400 hover:text-white underline"
+          className="mt-4 text-xs text-gray-400 hover:text-white underline cursor-pointer transition-colors"
         >
           Clear all filters
         </button>
       )}
 
       {filteredShows.length > 0 ? (
-        <div className="flex flex-wrap max-sm:justify-center gap-8 mt-8">
-          {filteredShows.map((movie) => (
-            <MovieCard movie={movie} key={movie._id} />
-          ))}
-        </div>
+        <>
+          <div className="flex flex-wrap max-sm:justify-center gap-8 mt-10">
+            {visibleShows.map((movie, i) => (
+              <FlyInCard key={movie._id} index={i}>
+                <MovieCard movie={movie} />
+              </FlyInCard>
+            ))}
+          </div>
+
+          {hasMore && (
+            <div className="flex justify-center mt-16">
+              <LoadMoreButton onClick={handleLoadMore} remaining={filteredShows.length - visibleCount} loading={loadingMore} />
+            </div>
+          )}
+        </>
       ) : (
         <div className="flex flex-col items-center text-center py-16">
-          <h2 className="text-xl font-medium">No movies match your filters</h2>
-          <p className="text-gray-400 mt-2">Try adjusting your search or filters.</p>
+          <h2 className="text-xl font-display font-medium">No movies match your filters</h2>
+          <p className="text-gray-400 mt-2 font-light">Try adjusting your search or filters.</p>
 
           {tmdbLoading && (
             <p className="text-gray-400 mt-6 text-sm">Checking for other matches...</p>
@@ -190,18 +221,26 @@ const Movies = () => {
                 Not available to book yet, but found on TMDB:
               </p>
               <div className="flex flex-wrap justify-center gap-4">
-                {tmdbResults.map((movie) => (
-                  <div key={movie.id} className="max-w-32 opacity-70">
+                {tmdbResults.map((movie, i) => (
+                  <motion.div
+                    key={movie.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: i * 0.05 }}
+                    className="max-w-32 opacity-70"
+                  >
                     {movie.poster_path && (
                       <img
                         src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
                         alt=""
-                        className="rounded-lg object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        className="rounded-xl object-cover"
                       />
                     )}
                     <p className="text-sm font-medium truncate mt-1">{movie.title}</p>
-                    <p className="text-xs text-gray-500">{movie.release_date}</p>
-                  </div>
+                    <p className="text-xs text-gray-400">{movie.release_date}</p>
+                  </motion.div>
                 ))}
               </div>
             </div>
@@ -211,9 +250,9 @@ const Movies = () => {
     </div>
   ) : (
     <div className="flex flex-col items-center justify-center h-screen text-center px-6">
-      <h1 className="text-3xl font-bold">No Movies Available</h1>
+      <h1 className="text-3xl font-display font-medium">No Movies Available</h1>
       {selectedTheater && (
-        <p className="text-gray-400 mt-2">
+        <p className="text-gray-400 mt-2 font-light">
           No upcoming shows at {selectedTheater.name} right now — try another theater.
         </p>
       )}

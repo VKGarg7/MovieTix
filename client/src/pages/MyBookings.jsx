@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { EyeOffIcon } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { EyeOffIcon, XIcon, TicketIcon, HistoryIcon, GiftIcon, UsersIcon, ClockIcon } from "lucide-react";
 import Loading from "../components/Loading";
-import BlurCircle from "../components/BlurCircle";
+import PageHeader from "../components/cinematic/PageHeader";
 import timeFormat from "../lib/timeFormat";
 import { dateFormat } from "../lib/dateFomat";
 import { useAppContext } from "../context/useAppContext";
@@ -306,56 +307,75 @@ const MyBookings = () => {
   };
 
   return !isLoading ? (
-    <div className="relative px-6 md:px-16 lg:px-40 pt-30 md:pt-40 min-h-[80vh]">
-      <BlurCircle top="100px" left="100px" />
-
-      <div>
-        <BlurCircle bottom="0px" right="600px" />
-      </div>
-
-      <h1 className="text-lg font-semibold mb-4">My Bookings</h1>
+    <div className="relative px-6 md:px-16 lg:px-40 pt-36 pb-24 md:pt-52 min-h-[80vh]">
+      <PageHeader eyebrow="Your Account" title="My Bookings" />
 
       <BingePass />
 
-      <div className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-lg mb-4 p-4 max-w-3xl">
-        <div>
-          <p className="text-sm text-gray-400">Loyalty points balance</p>
-          <p className="text-2xl font-semibold text-primary">{pointsBalance}</p>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.05 }}
+        className="flex items-center justify-between glass-panel mb-4 p-5 max-w-3xl"
+      >
+        <div className="flex items-center gap-3">
+          <TicketIcon className="w-8 h-8 text-primary" />
+          <div>
+            <p className="text-sm text-gray-400">Loyalty points balance</p>
+            <p className="text-2xl font-semibold text-primary">{pointsBalance}</p>
+          </div>
         </div>
         <button
           onClick={togglePointsHistory}
-          className="text-sm text-primary font-medium cursor-pointer"
+          className="flex items-center gap-1.5 text-sm text-primary font-medium cursor-pointer hover:underline"
         >
+          <HistoryIcon className="w-4 h-4" />
           {showPointsHistory ? "Hide history" : "View history"}
         </button>
-      </div>
+      </motion.div>
 
-      {showPointsHistory && (
-        <div className="max-w-3xl mb-6 border border-primary/20 rounded-lg overflow-hidden">
-          {pointsHistory.length === 0 ? (
-            <p className="text-gray-400 text-sm p-4">No points activity yet.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {pointsHistory.map((tx) => (
-                  <tr key={tx._id} className="border-b border-primary/10 last:border-0">
-                    <td className="p-3 text-gray-400">{new Date(tx.createdAt).toLocaleDateString()}</td>
-                    <td className="p-3 capitalize">{tx.reason.replace(/_/g, ' ')}</td>
-                    <td className={`p-3 text-right font-medium ${tx.delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {tx.delta > 0 ? '+' : ''}{tx.delta}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+      <AnimatePresence>
+        {showPointsHistory && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            className="max-w-3xl mb-6 glass-panel overflow-hidden"
+          >
+            {pointsHistory.length === 0 ? (
+              <p className="text-gray-400 text-sm p-4">No points activity yet.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <tbody>
+                  {pointsHistory.map((tx) => (
+                    <tr key={tx._id} className="border-b border-white/5 last:border-0">
+                      <td className="p-3 text-gray-400">{new Date(tx.createdAt).toLocaleDateString()}</td>
+                      <td className="p-3 capitalize">{tx.reason.replace(/_/g, ' ')}</td>
+                      <td className={`p-3 text-right font-medium ${tx.delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {tx.delta > 0 ? '+' : ''}{tx.delta}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {referralCode && (
-        <div className="bg-primary/8 border border-primary/20 rounded-lg mb-6 p-4 max-w-3xl">
-          <p className="text-sm text-gray-400">Invite friends, earn points</p>
-          <p className="text-xs text-gray-500 mt-0.5 mb-3">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1 }}
+          className="glass-panel mb-6 p-5 max-w-3xl"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <GiftIcon className="w-4 h-4 text-nebula-violet" />
+            <p className="text-sm font-medium">Invite friends, earn points</p>
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5 mb-3 font-light">
             Share your link — when a friend signs up and completes their first booking, you both earn points.
             {referralCount > 0 && ` You've referred ${referralCount} friend${referralCount > 1 ? "s" : ""} so far.`}
           </p>
@@ -365,27 +385,34 @@ const MyBookings = () => {
               readOnly
               value={referralLink}
               onClick={(e) => e.target.select()}
-              className="flex-1 bg-primary/10 border border-primary/30 rounded px-3 py-2 text-sm outline-none"
+              className="flex-1 glass-input"
             />
-            <button
+            <motion.button
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
               onClick={copyReferralLink}
-              className="px-4 py-2 text-sm bg-primary rounded cursor-pointer"
+              className="px-5 py-2.5 text-sm bg-primary hover:bg-primary-dull transition-colors rounded-full cursor-pointer"
             >
               Copy
-            </button>
+            </motion.button>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {groupBookings.length > 0 && (
-        <div id="watch-parties" className="max-w-3xl mb-6 scroll-mt-24">
-          <p className="text-sm font-semibold mb-2">My Watch Parties</p>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          id="watch-parties"
+          className="max-w-3xl mb-6 scroll-mt-24"
+        >
+          <p className="text-sm font-medium mb-2 flex items-center gap-1.5"><UsersIcon className="w-4 h-4 text-primary" /> My Watch Parties</p>
           <div className="flex flex-col gap-2">
             {groupBookings.map((group) => (
               <Link
                 key={group.groupId}
                 to={`/group-booking/${group.groupId}/manage`}
-                className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-lg px-4 py-3 hover:bg-primary/15 transition"
+                className="flex items-center justify-between glass-panel glass-panel-hover px-4 py-3.5"
               >
                 <div>
                   <p className="text-sm font-medium">{group.show?.movieTitle || "Show no longer available"}</p>
@@ -400,17 +427,22 @@ const MyBookings = () => {
               </Link>
             ))}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {waitlistEntries.length > 0 && (
-        <div id="waitlist" className="max-w-3xl mb-6 scroll-mt-24">
-          <p className="text-sm font-semibold mb-2">My Waitlist</p>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          id="waitlist"
+          className="max-w-3xl mb-6 scroll-mt-24"
+        >
+          <p className="text-sm font-medium mb-2 flex items-center gap-1.5"><ClockIcon className="w-4 h-4 text-primary" /> My Waitlist</p>
           <div className="flex flex-col gap-2">
             {waitlistEntries.map((entry) => (
               <div
                 key={entry.waitlistEntryId}
-                className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-lg px-4 py-3"
+                className="flex items-center justify-between glass-panel px-4 py-3.5"
               >
                 <div>
                   <p className="text-sm font-medium">{entry.show?.movieTitle || "Show no longer available"}</p>
@@ -430,7 +462,7 @@ const MyBookings = () => {
                   {entry.status === "offered" && (
                     <Link
                       to={`/waitlist/${entry.waitlistEntryId}/claim`}
-                      className="px-3 py-1.5 text-xs bg-primary rounded-full font-medium"
+                      className="px-3.5 py-1.5 text-xs bg-primary rounded-full font-medium"
                     >
                       Claim Now
                     </Link>
@@ -438,7 +470,7 @@ const MyBookings = () => {
                   <button
                     onClick={() => leaveWaitlist(entry.showId)}
                     disabled={leavingWaitlistShowId === entry.showId}
-                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer disabled:opacity-50"
+                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer disabled:opacity-50 transition-colors"
                   >
                     Leave
                   </button>
@@ -446,165 +478,186 @@ const MyBookings = () => {
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
       )}
 
-      <div className="flex gap-2 mb-4 border-b border-primary/20 max-w-3xl">
+      <div className="flex gap-1 mb-6 max-w-3xl relative">
         {TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => switchTab(tab)}
-            className={`px-4 py-2 text-sm font-medium cursor-pointer border-b-2 -mb-px transition ${
-              activeTab === tab
-                ? "border-primary text-primary"
-                : "border-transparent text-gray-400 hover:text-white"
+            className={`relative px-4 py-2.5 text-sm font-medium cursor-pointer transition-colors ${
+              activeTab === tab ? "text-white" : "text-gray-400 hover:text-white"
             }`}
           >
             {tab} ({tabCounts[tab]})
+            {activeTab === tab && (
+              <motion.div
+                layoutId="mybookings-tab-underline"
+                transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-nebula-amber"
+              />
+            )}
           </button>
         ))}
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-white/10" />
       </div>
 
       {bookings.length === 0 && (
-        <p className="text-gray-400 text-sm mt-6">No {activeTab.toLowerCase()} bookings.</p>
+        <p className="text-gray-400 text-sm mt-6 font-light">No {activeTab.toLowerCase()} bookings.</p>
       )}
 
-      {bookings.map((item, index) => (
-        <div
-          key={index}
-          className="flex flex-col md:flex-row justify-between bg-primary/8 border border-primary/20 rounded-lg mt-4 p-2 max-w-3xl"
-        >
-          {/* Displaying booking details */}
-          <div className="flex flex-col md:flex-row">
-            {item.show?.movie ? (
-              item.show.movie.isMysteryMovie ? (
-                <>
-                  <div className="md:max-w-45 md:w-45 aspect-video h-auto bg-gradient-to-br from-primary/30 to-gray-900 rounded flex flex-col items-center justify-center gap-1">
-                    <EyeOffIcon className="w-8 h-8 text-primary" />
-                    <p className="text-xs">Mystery Movie</p>
-                  </div>
+      <AnimatePresence mode="popLayout">
+        {bookings.map((item, index) => (
+          <motion.div
+            layout
+            key={item._id || index}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97 }}
+            transition={{ duration: 0.4, delay: index * 0.04, ease: [0.16, 1, 0.3, 1] }}
+            className="flex flex-col md:flex-row justify-between glass-panel glass-panel-hover mt-4 p-3 max-w-3xl"
+          >
+            <div className="flex flex-col md:flex-row">
+              {item.show?.movie ? (
+                item.show.movie.isMysteryMovie ? (
+                  <>
+                    <div className="md:max-w-45 md:w-45 aspect-video h-auto bg-gradient-to-br from-primary/30 to-void rounded-2xl flex flex-col items-center justify-center gap-1">
+                      <EyeOffIcon className="w-8 h-8 text-primary" />
+                      <p className="text-xs">Mystery Movie</p>
+                    </div>
 
-                  <div className="flex flex-col p-4">
-                    <p className="text-lg font-semibold">Mystery Movie</p>
-                    <p className="text-gray-400 text-sm">
-                      {item.show.movie.genres?.map((g) => g.name).join(", ")} &middot; {item.show.movie.ratingBand}
-                    </p>
-                    <p className="text-gray-400 text-xs mt-1">
-                      Revealed at the theater — your ticket won't show the title.
-                    </p>
-                    <p className="text-gray-400 text-sm mt-auto">
-                      {dateFormat(item.show.showDateTime)}
-                    </p>
-                  </div>
-                </>
+                    <div className="flex flex-col p-4">
+                      <p className="text-lg font-display font-medium">Mystery Movie</p>
+                      <p className="text-gray-400 text-sm">
+                        {item.show.movie.genres?.map((g) => g.name).join(", ")} &middot; {item.show.movie.ratingBand}
+                      </p>
+                      <p className="text-gray-400 text-xs mt-1">
+                        Revealed at the theater — your ticket won't show the title.
+                      </p>
+                      <p className="text-gray-400 text-sm mt-auto">
+                        {dateFormat(item.show.showDateTime)}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <img
+                      src={image_base_url + item.show.movie.poster_path}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="md:max-w-45 aspect-video h-auto object-cover object-bottom rounded-2xl"
+                    />
+
+                    <div className="flex flex-col p-4">
+                      <p className="text-lg font-display font-medium">{item.show.movie.title}</p>
+                      <p className="text-gray-400 text-sm">
+                        {timeFormat(item.show.movie.runtime)}
+                      </p>
+                      <p className="text-gray-400 text-sm mt-auto">
+                        {dateFormat(item.show.showDateTime)}
+                      </p>
+                    </div>
+                  </>
+                )
               ) : (
-                <>
-                  <img
-                    src={image_base_url + item.show.movie.poster_path}
-                    alt=""
-                    className="md:max-w-45 aspect-video h-auto object-cover object-bottom rounded"
-                  />
+                <div className="flex flex-col p-4">
+                  <p className="text-lg font-medium text-gray-400">Show no longer available</p>
+                </div>
+              )}
+            </div>
 
-                  <div className="flex flex-col p-4">
-                    <p className="text-lg font-semibold">{item.show.movie.title}</p>
-                    <p className="text-gray-400 text-sm">
-                      {timeFormat(item.show.movie.runtime)}
-                    </p>
-                    <p className="text-gray-400 text-sm mt-auto">
-                      {dateFormat(item.show.showDateTime)}
-                    </p>
-                  </div>
-                </>
-              )
-            ) : (
-              <div className="flex flex-col p-4">
-                <p className="text-lg font-semibold text-gray-400">Show no longer available</p>
+            <div className="flex flex-col md:items-end md:text-right justify-between p-4">
+              <div className="flex flex-col md:items-end items-start gap-1">
+                <p className="text-2xl font-semibold mb-2">
+                  {currency}
+                  {item.amount}
+                </p>
+
+                {activeTab === "Upcoming" && item.show?.showDateTime && (
+                  <Countdown showDateTime={item.show.showDateTime} />
+                )}
+
+                {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.show?.movie &&
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => handleAddToCalendar(item)}
+                    disabled={downloadingId === item._id}
+                    className="border border-primary text-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50 hover:bg-primary/10 transition-colors"
+                  >
+                    {downloadingId === item._id ? "Preparing..." : "Add to Calendar"}
+                  </motion.button>
+                }
+
+                {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.snacks?.length > 0 &&
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => handleShowQr(item._id)}
+                    disabled={loadingQrId === item._id}
+                    className="border border-primary text-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50 hover:bg-primary/10 transition-colors"
+                  >
+                    {loadingQrId === item._id ? "Loading..." : item.concessionPickedUp ? "View Pickup QR (used)" : "Show Pickup QR"}
+                  </motion.button>
+                }
+
+                {!item.isPaid && item.status !== "cancelled" &&
+                  <motion.a
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.96 }}
+                    href={item.paymentLink}
+                    className="bg-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer"
+                  >
+                    Pay Now
+                  </motion.a>
+                }
+                {canCancel(item) &&
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => handleCancel(item._id)}
+                    disabled={cancellingId === item._id}
+                    className="border border-red-500 text-red-500 px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50 hover:bg-red-500/10 transition-colors"
+                  >
+                    {cancellingId === item._id ? "Cancelling..." : "Cancel Booking"}
+                  </motion.button>
+                }
+                {item.status === "cancelled" &&
+                  <p className="text-sm text-red-500 mb-3">Cancelled &middot; Refunded</p>
+                }
+                {item.status === "pending-cancellation" &&
+                  <p className="text-sm text-yellow-500 mb-3">Cancelled &middot; Refund pending</p>
+                }
               </div>
-            )}
-          </div>
 
-          {/* Displaying booking summary */}
-          <div className="flex flex-col md:items-end md:text-right justify-between p-4">
-            <div className="flex flex-col md:items-end items-start gap-1">
-              <p className="text-2xl font-semibold mb-2">
-                {currency}
-                {item.amount}
-              </p>
-
-              {activeTab === "Upcoming" && item.show?.showDateTime && (
-                <Countdown showDateTime={item.show.showDateTime} />
-              )}
-
-              {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.show?.movie &&
-                <button
-                  onClick={() => handleAddToCalendar(item)}
-                  disabled={downloadingId === item._id}
-                  className="border border-primary text-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50"
-                >
-                  {downloadingId === item._id ? "Preparing..." : "Add to Calendar"}
-                </button>
-              }
-
-              {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.snacks?.length > 0 &&
-                <button
-                  onClick={() => handleShowQr(item._id)}
-                  disabled={loadingQrId === item._id}
-                  className="border border-primary text-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50"
-                >
-                  {loadingQrId === item._id ? "Loading..." : item.concessionPickedUp ? "View Pickup QR (used)" : "Show Pickup QR"}
-                </button>
-              }
-
-              {!item.isPaid && item.status !== "cancelled" &&
-                <a
-                  href={item.paymentLink}
-                  className="bg-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer"
-                >
-                  Pay Now
-                </a>
-              }
-              {canCancel(item) &&
-                <button
-                  onClick={() => handleCancel(item._id)}
-                  disabled={cancellingId === item._id}
-                  className="border border-red-500 text-red-500 px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50"
-                >
-                  {cancellingId === item._id ? "Cancelling..." : "Cancel Booking"}
-                </button>
-              }
-              {item.status === "cancelled" &&
-                <p className="text-sm text-red-500 mb-3">Cancelled &middot; Refunded</p>
-              }
-              {item.status === "pending-cancellation" &&
-                <p className="text-sm text-yellow-500 mb-3">Cancelled &middot; Refund pending</p>
-              }
-            </div>
-
-            <div className="text-sm">
-              <p>
-                <span className="text-gray-400">Total Tickets:</span>
-                {item.bookedSeats.length}
-              </p>
-              <p>
-                <span className="text-gray-400">Seat Number:</span>
-                {item.bookedSeats.join(", ")}
-              </p>
-              {item.snacks?.length > 0 && (
+              <div className="text-sm">
                 <p>
-                  <span className="text-gray-400">Snacks:</span>
-                  {item.snacks.map((s) => `${s.quantity}x ${s.name}`).join(", ")}
+                  <span className="text-gray-400">Total Tickets:</span>
+                  {item.bookedSeats.length}
                 </p>
-              )}
-              {item.pointsRedeemed > 0 && (
                 <p>
-                  <span className="text-gray-400">Points redeemed:</span>
-                  {item.pointsRedeemed} (-{currency}{item.pointsDiscountAmount})
+                  <span className="text-gray-400">Seat Number:</span>
+                  {item.bookedSeats.join(", ")}
                 </p>
-              )}
+                {item.snacks?.length > 0 && (
+                  <p>
+                    <span className="text-gray-400">Snacks:</span>
+                    {item.snacks.map((s) => `${s.quantity}x ${s.name}`).join(", ")}
+                  </p>
+                )}
+                {item.pointsRedeemed > 0 && (
+                  <p>
+                    <span className="text-gray-400">Points redeemed:</span>
+                    {item.pointsRedeemed} (-{currency}{item.pointsDiscountAmount})
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      ))}
+          </motion.div>
+        ))}
+      </AnimatePresence>
 
       {totalPages > 1 && (
         <div className="flex items-center gap-4 mt-6 mb-6 max-w-3xl text-sm">
@@ -626,26 +679,36 @@ const MyBookings = () => {
         </div>
       )}
 
-      {qrModalUrl && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4"
-          onClick={closeQrModal}
-        >
-          <div
-            className="bg-[#1f1f24] border border-primary/20 rounded-lg p-6 flex flex-col items-center"
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {qrModalUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-md px-4"
+            onClick={closeQrModal}
           >
-            <p className="text-sm font-medium mb-3">Show this at the concession counter</p>
-            <img src={qrModalUrl} alt="Concession pickup QR code" className="w-56 h-56" />
-            <button
-              onClick={closeQrModal}
-              className="mt-4 text-sm text-gray-400 hover:text-white cursor-pointer"
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              className="glass-panel p-6 flex flex-col items-center"
+              onClick={(e) => e.stopPropagation()}
             >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+              <p className="text-sm font-medium mb-3">Show this at the concession counter</p>
+              <img src={qrModalUrl} alt="Concession pickup QR code" className="w-56 h-56 rounded-xl" />
+              <button
+                onClick={closeQrModal}
+                className="mt-4 flex items-center gap-1.5 text-sm text-gray-400 hover:text-white cursor-pointer transition-colors"
+              >
+                <XIcon className="w-3.5 h-3.5" />
+                Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   ) : (
     <Loading />
