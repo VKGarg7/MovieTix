@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 const BookingFlowContext = createContext(null);
-
-export const STEPS = ["movie", "theater", "date", "seat", "food", "payment"];
+import { STEPS } from "./bookingFlowSteps";
 
 const initialState = {
   movie: null, 

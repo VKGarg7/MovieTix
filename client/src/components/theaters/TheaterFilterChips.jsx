@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CrownIcon, Volume2Icon, MonitorPlayIcon, PopcornIcon, CarIcon, SofaIcon, LocateFixedIcon } from "lucide-react";
 
-export const FILTERS = [
+const FILTERS = [
   { key: "all", label: "All" },
   { key: "imax", label: "IMAX", icon: MonitorPlayIcon },
   { key: "dolby", label: "Dolby", icon: Volume2Icon },

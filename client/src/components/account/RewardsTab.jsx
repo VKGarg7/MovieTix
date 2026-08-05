@@ -20,7 +20,6 @@ const CountUp = ({ value }) => {
     }
     const controls = animate(0, value, { duration: 1.4, ease: [0.16, 1, 0.3, 1], onUpdate: (v) => setDisplay(Math.round(v)) });
     return () => controls.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
   return <span>{display}</span>;
 };

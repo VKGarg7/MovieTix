@@ -10,7 +10,7 @@ import {
   LogOutIcon,
 } from "lucide-react";
 
-export const TABS = [
+const TABS = [
   { key: "overview", label: "Overview", icon: LayoutDashboardIcon },
   { key: "bookings", label: "Bookings", icon: TicketIcon },
   { key: "wishlist", label: "Wishlist", icon: HeartIcon },

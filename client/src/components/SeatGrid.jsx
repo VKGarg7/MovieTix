@@ -1,7 +1,8 @@
 import React, { useRef, useState } from "react";
 import { useMotionValue, motion, useSpring, useTransform } from "framer-motion";
 import { SEAT_TYPE_META, getSeatTypeMeta } from "../lib/seatTypeMeta";
-import Seat, { SEAT_LIGHTING } from "./cinematic/Seat";
+import Seat from "./cinematic/Seat";
+import { SEAT_LIGHTING } from "../lib/seatLighting";
 
 export const SeatTypeLegend = () => (
   <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mt-6 text-[11px] text-gray-400">

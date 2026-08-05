@@ -1,6 +1,7 @@
 import React from "react";
 import { useParams } from "react-router-dom";
-import { BookingFlowProvider, useBookingFlow, STEPS } from "../../context/BookingFlowContext";
+import { BookingFlowProvider, useBookingFlow } from "../../context/BookingFlowContext";
+import { STEPS } from "../../context/bookingFlowSteps";
 import { useAppContext } from "../../context/useAppContext";
 import Stepper from "../../components/cinematic/Stepper";
 import StepTransition from "../../components/cinematic/StepTransition";

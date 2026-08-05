@@ -12,8 +12,6 @@ import FavouriteCard from "../components/favourite/FavouriteCard";
 import { useAppContext } from "../context/useAppContext";
 import useDebouncedSearch from "../hooks/useDebouncedSearch";
 
-const languageNames = new Intl.DisplayNames(["en"], { type: "language" });
-
 const Favourite = () => {
   const { favoriteMovies } = useAppContext();
 

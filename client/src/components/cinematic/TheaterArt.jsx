@@ -1,7 +1,7 @@
 import React from "react";
 import { Building2Icon } from "lucide-react";
 
-const TheaterArt = ({ palette, name, className = "" }) => {
+const TheaterArt = ({ palette, className = "" }) => {
   const [a, b] = palette;
   return (
     <div className={`relative w-full h-full overflow-hidden ${className}`}>

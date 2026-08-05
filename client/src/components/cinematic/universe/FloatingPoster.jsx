@@ -9,7 +9,7 @@ const PosterMesh = ({ src, hovered }) => {
   const mesh = useRef()
   const target = useRef({ rx: 0, ry: 0 })
 
-  useFrame((state, delta) => {
+  useFrame((state) => {
     const t = state.clock.getElapsedTime()
     if (!group.current) return
 

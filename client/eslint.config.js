@@ -29,6 +29,7 @@ export default defineConfig([
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
       'react/jsx-uses-vars': 'error',
+      'react-refresh/only-export-components': ['error', { allowConstantExport: true, allowExportNames: ['useBookingFlow', 'useSound'] }],
     },
   },
 ])
