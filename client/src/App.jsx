@@ -1,40 +1,50 @@
-import React, { useState } from 'react'
+import React, { Suspense, lazy, useEffect, useState } from 'react'
+import { MotionConfig } from 'framer-motion'
+import { initScrollStore } from './lib/scrollStore'
+import Universe from './components/cinematic/universe/Universe'
+import CustomCursor from './components/cinematic/CustomCursor'
+import PageTransition from './components/cinematic/PageTransition'
 import Navbar from './components/Navbar'
 import CityTheaterModal from './components/CityTheaterModal'
 import { Route, Routes, useLocation } from 'react-router-dom'
-import Home from './pages/Home'
-import Movies from './pages/Movies'
-import MovieDetails from './pages/MovieDetails'
-import SeatLayout from './pages/SeatLayout'
-import GroupBookingCreate from './pages/GroupBookingCreate'
-import GroupBookingClaim from './pages/GroupBookingClaim'
-import GroupBookingManage from './pages/GroupBookingManage'
-import ShowtimePollCreate from './pages/ShowtimePollCreate'
-import ShowtimePollVote from './pages/ShowtimePollVote'
-import ShowtimePollManage from './pages/ShowtimePollManage'
-import WaitlistClaim from './pages/WaitlistClaim'
-import MyBookings from './pages/MyBookings'
-import Favourite from './pages/Favourite'
-import Theaters from './pages/Theaters'
-import TheaterDetails from './pages/TheaterDetails'
 import {Toaster} from 'react-hot-toast'
 import Footer from './components/Footer'
-import Layout from './pages/admin/Layout'
-import Dashboard from './pages/admin/Dashboard'
-import AddShows from './pages/admin/AddShows'
-import ListShows from './pages/admin/ListShows'
-import ListBookings from './pages/admin/ListBookings'
-import Coupons from './pages/admin/Coupons'
-import PricingRules from './pages/admin/PricingRules'
-import MenuItems from './pages/admin/MenuItems'
-import VerifyPickup from './pages/admin/VerifyPickup'
-import ManageTheaters from './pages/admin/ManageTheaters'
-import AuditLog from './pages/admin/AuditLog'
-import MultiplexPulse from './pages/admin/MultiplexPulse'
 import { useAppContext } from './context/useAppContext'
 import { SignIn } from '@clerk/clerk-react'
 import Loading from './components/Loading'
 import BookingAssistant from './components/BookingAssistant'
+
+// Every routed page is code-split — the initial bundle only needs the app shell
+// (nav, footer, 3D universe, providers), not every page's chunk up front.
+const Home = lazy(() => import('./pages/Home'))
+const Movies = lazy(() => import('./pages/Movies'))
+const MovieDetails = lazy(() => import('./pages/MovieDetails'))
+const SeatLayout = lazy(() => import('./pages/SeatLayout'))
+const BookingFlow = lazy(() => import('./pages/booking/BookingFlow'))
+const GroupBookingCreate = lazy(() => import('./pages/GroupBookingCreate'))
+const GroupBookingClaim = lazy(() => import('./pages/GroupBookingClaim'))
+const GroupBookingManage = lazy(() => import('./pages/GroupBookingManage'))
+const ShowtimePollCreate = lazy(() => import('./pages/ShowtimePollCreate'))
+const ShowtimePollVote = lazy(() => import('./pages/ShowtimePollVote'))
+const ShowtimePollManage = lazy(() => import('./pages/ShowtimePollManage'))
+const WaitlistClaim = lazy(() => import('./pages/WaitlistClaim'))
+const MyBookings = lazy(() => import('./pages/MyBookings'))
+const Account = lazy(() => import('./pages/Account'))
+const Favourite = lazy(() => import('./pages/Favourite'))
+const Theaters = lazy(() => import('./pages/Theaters'))
+const TheaterDetails = lazy(() => import('./pages/TheaterDetails'))
+const Layout = lazy(() => import('./pages/admin/Layout'))
+const Dashboard = lazy(() => import('./pages/admin/Dashboard'))
+const AddShows = lazy(() => import('./pages/admin/AddShows'))
+const ListShows = lazy(() => import('./pages/admin/ListShows'))
+const ListBookings = lazy(() => import('./pages/admin/ListBookings'))
+const Coupons = lazy(() => import('./pages/admin/Coupons'))
+const PricingRules = lazy(() => import('./pages/admin/PricingRules'))
+const MenuItems = lazy(() => import('./pages/admin/MenuItems'))
+const VerifyPickup = lazy(() => import('./pages/admin/VerifyPickup'))
+const ManageTheaters = lazy(() => import('./pages/admin/ManageTheaters'))
+const AuditLog = lazy(() => import('./pages/admin/AuditLog'))
+const MultiplexPulse = lazy(() => import('./pages/admin/MultiplexPulse'))
 
 const App = () => {
 
@@ -43,8 +53,12 @@ const App = () => {
   const {user, selectedTheater} = useAppContext()
   const [isCityModalOpen, setIsCityModalOpen] = useState(false)
 
+  useEffect(() => initScrollStore(), [])
+
   return (
-    <>
+    <MotionConfig reducedMotion="user">
+      <Universe />
+      <CustomCursor />
       <Toaster />
       {!isAdminRoute && !selectedTheater && (
         <CityTheaterModal onClose={() => {}} dismissible={false} />
@@ -54,10 +68,14 @@ const App = () => {
       )}
       {!isAdminRoute && <Navbar onChangeLocation={() => setIsCityModalOpen(true)} />}
       {!isAdminRoute && <BookingAssistant />}
+      <PageTransition>
+      <Suspense fallback={<Loading />}>
       <Routes>
         <Route path='/' element={<Home/>} />
         <Route path='/movies' element={<Movies/>} />
         <Route path='/movies/:id' element={<MovieDetails/>} />
+        <Route path='/book' element={<BookingFlow/>} />
+        <Route path='/book/:movieId' element={<BookingFlow/>} />
         <Route path='/movies/:id/:date' element={<SeatLayout/>} />
         <Route path='/movies/:id/:date/group-booking' element={<GroupBookingCreate/>} />
         <Route path='/group-booking/:groupId' element={<GroupBookingClaim/>} />
@@ -67,8 +85,9 @@ const App = () => {
         <Route path='/showtime-poll/:pollId/manage' element={<ShowtimePollManage/>} />
         <Route path='/waitlist/:entryId/claim' element={<WaitlistClaim/>} />
         <Route path='/my-bookings' element={<MyBookings/>} />
+        <Route path='/account' element={<Account/>} />
         <Route path='/loading/:nextUrl' element={<Loading/>} />
-        
+
         <Route path='/favourite' element={<Favourite/>} />
         <Route path='/theaters' element={<Theaters/>} />
         <Route path='/theaters/:id' element={<TheaterDetails/>} />
@@ -92,8 +111,10 @@ const App = () => {
         </Route>
 
       </Routes>
+      </Suspense>
+      </PageTransition>
       {!isAdminRoute && <Footer/>}
-    </>
+    </MotionConfig>
   )
 }
 
