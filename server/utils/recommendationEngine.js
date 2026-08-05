@@ -51,7 +51,15 @@ export const scoreCandidates = (candidates, signals) => {
         return (b.movie.vote_average || 0) - (a.movie.vote_average || 0);
     });
 
-    return { recommendations: scored.slice(0, MAX_RECOMMENDATIONS) };
+    const top = scored.slice(0, MAX_RECOMMENDATIONS);
+    const maxScore = Math.max(...top.map((r) => r.score), 0);
+
+    const withMatch = top.map((r) => ({
+        ...r,
+        matchPercent: maxScore > 0 ? Math.round((r.score / maxScore) * 100) : 60,
+    }));
+
+    return { recommendations: withMatch };
 };
 
 export { BOOKING_SIGNAL_WEIGHT, FOLLOW_SIGNAL_WEIGHT, MAX_RECOMMENDATIONS };

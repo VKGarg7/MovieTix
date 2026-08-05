@@ -34,7 +34,6 @@ const categoryMatch = (category) => {
     return {};
 };
 
-// API controller function to get user bookings
 export const getUserBookings = asyncHandler(async (req, res) => {
     const user = req.auth().userId;
     const { category } = req.query;
@@ -88,7 +87,6 @@ export const getUserBookings = asyncHandler(async (req, res) => {
 });
 
 
-// API controller function to update favorite movie in clerk user metadata
 export const updateFavorite = asyncHandler(async (req, res) => {
     const { movieId } = req.body;
     const userId = req.auth().userId;
@@ -118,12 +116,16 @@ export const updateFavorite = asyncHandler(async (req, res) => {
 
 export const getFavorites = asyncHandler(async (req, res) => {
     const user = await clerkClient.users.getUser(req.auth().userId);
-    const favorites = user.privateMetadata.favorites;
+    const favorites = user.privateMetadata.favorites || [];
 
-    //getting movies from database
     const movies = await Movie.find({ _id: { $in: favorites }});
 
-    res.json({ success: true, movies });
+    const movieById = new Map(movies.map(movie => [movie._id.toString(), movie]));
+    const orderedMovies = favorites
+        .map(id => movieById.get(id))
+        .filter(Boolean);
+
+    res.json({ success: true, movies: orderedMovies });
 });
 
 

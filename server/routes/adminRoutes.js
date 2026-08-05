@@ -1,6 +1,6 @@
 import express from 'express';
 import { protectAdmin, requireSuperAdmin } from '../middleware/auth.js';
-import { exportBookingsCsv, getAllBookings, getAllShows, getAuditLog, getDashboardAnalytics, getDashboardData, isAdmin } from '../controllers/adminController.js';
+import { exportBookingsCsv, getAllBookings, getAllShows, getAuditLog, getDashboardAnalytics, getDashboardData, getRecentActivity, isAdmin } from '../controllers/adminController.js';
 import { getAdminOccupancyPulse } from '../controllers/showController.js';
 
 const adminRouter = express.Router();
@@ -109,6 +109,27 @@ adminRouter.get('/dashboard-data', protectAdmin , getDashboardData);
  *         $ref: '#/components/responses/ServerError'
  */
 adminRouter.get('/dashboard-analytics', protectAdmin , getDashboardAnalytics);
+
+/**
+ * @openapi
+ * /admin/recent-activity:
+ *   get:
+ *     summary: Get the most recent booking events (payments, cancellations) for a live activity feed
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     description: >
+ *       Auth: admin only, theater-scoped for theater-admins. Polling-friendly snapshot
+ *       of the most recently created/updated bookings — not a push/websocket stream.
+ *     responses:
+ *       200:
+ *         description: Recent booking events
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
+adminRouter.get('/recent-activity', protectAdmin , getRecentActivity);
 
 /**
  * @openapi

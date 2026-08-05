@@ -19,34 +19,75 @@ export const getDashboardData = asyncHandler(async (req, res) => {
     const { role, theaterId } = req.adminContext;
     const showFilter = { showDateTime: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }, isCancelled: { $ne: true } };
     const bookingFilter = { isPaid: true };
+    const startOfToday = new Date(new Date().setHours(0, 0, 0, 0));
+    const todayBookingFilter = { isPaid: true, createdAt: { $gte: startOfToday } };
 
     if (role === 'theaterAdmin') {
         showFilter.screen = { $in: await getScreenIdsForTheater(theaterId) };
-        bookingFilter.show = { $in: await getShowIdsForTheater(theaterId) };
+        const scopedShowIds = { $in: await getShowIdsForTheater(theaterId) };
+        bookingFilter.show = scopedShowIds;
+        todayBookingFilter.show = scopedShowIds;
     }
 
-    const [bookingStats] = await Booking.aggregate([
-        { $match: bookingFilter },
-        { $group: { _id: null, totalBookings: { $sum: 1 }, totalRevenue: { $sum: '$amount' } } },
+    const startOfYesterday = new Date(startOfToday);
+    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    const yesterdayBookingFilter = { ...todayBookingFilter, createdAt: { $gte: startOfYesterday, $lt: startOfToday } };
+
+    const [[bookingStats], [todayBookingStats], [yesterdayBookingStats], activeShowsCount, activeShowsRaw, totalUser] = await Promise.all([
+        Booking.aggregate([
+            { $match: bookingFilter },
+            { $group: { _id: null, totalBookings: { $sum: 1 }, totalRevenue: { $sum: '$amount' } } },
+        ]),
+        Booking.aggregate([
+            { $match: todayBookingFilter },
+            { $group: { _id: null, todayBookings: { $sum: 1 }, todayRevenue: { $sum: '$amount' } } },
+        ]),
+        Booking.aggregate([
+            { $match: yesterdayBookingFilter },
+            { $group: { _id: null, todayBookings: { $sum: 1 }, todayRevenue: { $sum: '$amount' } } },
+        ]),
+        Show.countDocuments(showFilter),
+        Show.find(showFilter).sort({ showDateTime: 1 }).limit(DASHBOARD_ACTIVE_SHOWS_PREVIEW_LIMIT).populate('movie').populate('screen'),
+        role === 'superAdmin' ? User.countDocuments() : Promise.resolve(null),
     ]);
 
-    const activeShowsCount = await Show.countDocuments(showFilter);
-    const activeShows = await Show.find(showFilter)
-        .sort({ showDateTime: 1 })
-        .limit(DASHBOARD_ACTIVE_SHOWS_PREVIEW_LIMIT)
-        .populate('movie');
+    const activeShowIds = activeShowsRaw.map(s => s._id.toString());
+    const perShowBookingStats = activeShowIds.length > 0
+        ? await Booking.aggregate([
+            { $match: { isPaid: true, show: { $in: activeShowIds } } },
+            { $group: { _id: '$show', revenue: { $sum: '$amount' }, seatsSold: { $sum: { $size: '$bookedSeats' } } } },
+        ])
+        : [];
+    const statsByShowId = new Map(perShowBookingStats.map(s => [s._id, s]));
 
-    const totalUser = role === 'superAdmin' ? await User.countDocuments() : null;
+    const activeShows = activeShowsRaw.map(show => {
+        const stats = statsByShowId.get(show._id.toString());
+        const occupiedCount = Object.keys(show.occupiedSeats || {}).length;
+        const totalCapacity = show.screen?.totalCapacity || 0;
+        return {
+            ...show.toObject(),
+            revenue: stats?.revenue || 0,
+            seatsSold: stats?.seatsSold || 0,
+            occupiedCount,
+            totalCapacity,
+            occupancyPct: totalCapacity > 0 ? Math.round((occupiedCount / totalCapacity) * 1000) / 10 : 0,
+        };
+    });
 
-    const dashboardData = {
-        totalBookings: bookingStats?.totalBookings || 0,
-        totalRevenue: bookingStats?.totalRevenue || 0,
-        activeShowsCount,
-        activeShows,
-        totalUser
-    }
-
-    res.json({ success: true, dashboardData });
+    res.json({
+        success: true,
+        dashboardData: {
+            totalBookings: bookingStats?.totalBookings || 0,
+            totalRevenue: bookingStats?.totalRevenue || 0,
+            todayBookings: todayBookingStats?.todayBookings || 0,
+            todayRevenue: todayBookingStats?.todayRevenue || 0,
+            yesterdayBookings: yesterdayBookingStats?.todayBookings || 0,
+            yesterdayRevenue: yesterdayBookingStats?.todayRevenue || 0,
+            activeShowsCount,
+            activeShows,
+            totalUser,
+        },
+    });
 });
 
 
@@ -101,7 +142,7 @@ export const getDashboardAnalytics = asyncHandler(async (req, res) => {
         bookingMatch.show = { $in: showIds };
     }
 
-    const [revenueTrend, topMovies] = await Promise.all([
+    const [revenueTrend, topMovies, topTheaters, genreDistribution] = await Promise.all([
         Booking.aggregate([
             { $match: bookingMatch },
             {
@@ -154,6 +195,42 @@ export const getDashboardAnalytics = asyncHandler(async (req, res) => {
                     bookings: 1,
                 },
             },
+        ]),
+        scopedTheaterId ? Promise.resolve([]) : Booking.aggregate([
+            { $match: bookingMatch },
+            { $addFields: { showObjectId: { $toObjectId: '$show' } } },
+            { $lookup: { from: 'shows', localField: 'showObjectId', foreignField: '_id', as: 'showDoc' } },
+            { $unwind: '$showDoc' },
+            { $lookup: { from: 'screens', localField: 'showDoc.screen', foreignField: '_id', as: 'screenDoc' } },
+            { $unwind: '$screenDoc' },
+            { $group: { _id: '$screenDoc.theater', revenue: { $sum: '$amount' }, bookings: { $sum: 1 } } },
+            { $sort: { revenue: -1 } },
+            { $limit: 10 },
+            { $lookup: { from: 'theaters', localField: '_id', foreignField: '_id', as: 'theaterDoc' } },
+            { $unwind: '$theaterDoc' },
+            {
+                $project: {
+                    _id: 0,
+                    theaterId: '$_id',
+                    name: '$theaterDoc.name',
+                    city: '$theaterDoc.city',
+                    revenue: 1,
+                    bookings: 1,
+                },
+            },
+        ]),
+        Booking.aggregate([
+            { $match: bookingMatch },
+            { $addFields: { showObjectId: { $toObjectId: '$show' } } },
+            { $lookup: { from: 'shows', localField: 'showObjectId', foreignField: '_id', as: 'showDoc' } },
+            { $unwind: '$showDoc' },
+            { $lookup: { from: 'movies', localField: 'showDoc.movie', foreignField: '_id', as: 'movieDoc' } },
+            { $unwind: '$movieDoc' },
+            { $unwind: '$movieDoc.genres' },
+            { $group: { _id: '$movieDoc.genres.name', bookings: { $sum: 1 }, revenue: { $sum: '$amount' } } },
+            { $sort: { bookings: -1 } },
+            { $limit: 8 },
+            { $project: { _id: 0, genre: '$_id', bookings: 1, revenue: 1 } },
         ]),
     ]);
 
@@ -220,9 +297,47 @@ export const getDashboardAnalytics = asyncHandler(async (req, res) => {
             range: { from, to },
             revenueTrend,
             topMovies,
+            topTheaters,
+            genreDistribution,
             occupancyByShow,
         },
     });
+});
+
+
+const RECENT_ACTIVITY_LIMIT = 20;
+
+export const getRecentActivity = asyncHandler(async (req, res) => {
+    const { role, theaterId } = req.adminContext;
+    const match = {};
+    if (role === 'theaterAdmin') {
+        match.show = { $in: await getShowIdsForTheater(theaterId) };
+    }
+
+    const bookings = await Booking.aggregate([
+        { $match: match },
+        { $sort: { updatedAt: -1 } },
+        { $limit: RECENT_ACTIVITY_LIMIT },
+        { $addFields: { showObjectId: { $toObjectId: '$show' } } },
+        { $lookup: { from: 'shows', localField: 'showObjectId', foreignField: '_id', as: 'showDoc' } },
+        { $unwind: { path: '$showDoc', preserveNullAndEmptyArrays: true } },
+        { $lookup: { from: 'movies', localField: 'showDoc.movie', foreignField: '_id', as: 'movieDoc' } },
+        { $unwind: { path: '$movieDoc', preserveNullAndEmptyArrays: true } },
+        {
+            $project: {
+                _id: 1,
+                status: 1,
+                isPaid: 1,
+                amount: 1,
+                bookedSeats: 1,
+                createdAt: 1,
+                updatedAt: 1,
+                movieTitle: '$movieDoc.title',
+            },
+        },
+    ]);
+
+    res.json({ success: true, events: bookings });
 });
 
 
@@ -287,7 +402,12 @@ export const getAllShows = asyncHandler(async (req, res) => {
     const { page, limit, skip } = parsePagination(req.query);
 
     const [shows, total] = await Promise.all([
-        Show.find(filter).populate('movie').sort({ showDateTime: 1 }).skip(skip).limit(limit),
+        Show.find(filter)
+            .populate('movie')
+            .populate({ path: 'screen', populate: { path: 'theater' } })
+            .sort({ showDateTime: 1 })
+            .skip(skip)
+            .limit(limit),
         Show.countDocuments(filter),
     ]);
 
@@ -308,7 +428,7 @@ export const getAllBookings = asyncHandler(async (req, res) => {
     const [bookings, total] = await Promise.all([
         Booking.find(filter).populate('user').populate({
             path: "show",
-            populate: {path: "movie"}
+            populate: [{ path: "movie" }, { path: "screen", populate: { path: "theater" } }],
         }).sort({ createdAt: -1 }).skip(skip).limit(limit),
         Booking.countDocuments(filter),
     ]);
@@ -353,5 +473,15 @@ export const getAuditLog = asyncHandler(async (req, res) => {
         AuditLog.countDocuments(filter),
     ]);
 
-    res.json({ success: true, entries, pageInfo: buildPageMeta(page, limit, total) });
+    const actorIds = [...new Set(entries.map((e) => e.actorId))];
+    const actors = await User.find({ _id: { $in: actorIds } }).select('name image');
+    const actorById = Object.fromEntries(actors.map((a) => [a._id, { name: a.name, image: a.image }]));
+
+    const enrichedEntries = entries.map((e) => ({
+        ...e.toObject(),
+        actorName: actorById[e.actorId]?.name || null,
+        actorImage: actorById[e.actorId]?.image || null,
+    }));
+
+    res.json({ success: true, entries: enrichedEntries, pageInfo: buildPageMeta(page, limit, total) });
 });

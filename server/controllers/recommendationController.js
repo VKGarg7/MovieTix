@@ -39,6 +39,6 @@ export const getRecommendations = asyncHandler(async (req, res) => {
 
     res.json({
         success: true,
-        recommendations: recommendations.map(({ movie, reason }) => ({ movie, reason })),
+        recommendations: recommendations.map(({ movie, reason, matchPercent }) => ({ movie, reason, matchPercent })),
     });
 });
