@@ -1,66 +1,77 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import Loading from '../../components/Loading';
-import Title from '../../components/admin/Title';
-import PaginationControls from '../../components/admin/PaginationControls';
-import Select from '../../components/admin/Select';
 import { useAppContext } from '../../context/useAppContext';
-import { ADMIN_INPUT_CLASS, ADMIN_SUBMIT_BTN_CLASS } from '../../lib/adminStyles';
 import toast from 'react-hot-toast';
 
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+import RevenuePricingHeader from '../../components/admin/pricing/RevenuePricingHeader';
+import PricingKpiRow from '../../components/admin/pricing/PricingKpiRow';
+import CreateRulePanel from '../../components/admin/pricing/CreateRulePanel';
+import RuleFilterBar from '../../components/admin/pricing/RuleFilterBar';
+import RuleRow from '../../components/admin/pricing/RuleRow';
+import RuleEmptyState from '../../components/admin/pricing/RuleEmptyState';
+import SimulationPanel from '../../components/admin/pricing/SimulationPanel';
+import PremiumPagination from '../../components/admin/listshows/PremiumPagination';
+import { getRuleStatus } from '../../lib/pricingRuleStatus';
 
 const emptyForm = {
-  name: '',
-  type: 'time_of_week',
-  adjustmentPercent: '',
-  daysOfWeek: [5, 6],
-  startHour: '18',
-  endHour: '24',
-  minDaysBeforeShow: '7',
+  name: '', type: 'time_of_week', adjustmentType: 'percentage', adjustmentPercent: '',
+  daysOfWeek: [5, 6], startHour: '18', endHour: '24', minDaysBeforeShow: '7',
+  theaterId: '', priority: '', seatCategories: false, conflictResolution: false, isActive: true,
 };
 
-const PricingRules = () => {
+const DEFAULT_FILTERS = { query: '', type: 'all', status: 'all', theater: 'all', sort: 'created-desc' };
 
-  const {axios , getToken , user} = useAppContext();
+const PricingRules = () => {
+  const { axios, getToken, user, fetchTheaters } = useAppContext();
+  const currency = import.meta.env.VITE_CURRENCY;
 
   const [rules, setRules] = useState([]);
+  const [theaters, setTheaters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState(null);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [simulationOpen, setSimulationOpen] = useState(false);
 
-  const getAllRules = async (targetPage = page) => {
+  const getAllRules = async (targetPage = page, silent = false) => {
+    if (!silent) setLoading(true);
     try {
-      const {data} = await axios.get('/api/pricing-rule', {
-        params: { page: targetPage },
-        headers: {Authorization: `Bearer ${await getToken()}`},
+      const { data } = await axios.get('/api/pricing-rule', {
+        params: { page: targetPage, limit: pageSize },
+        headers: { Authorization: `Bearer ${await getToken()}` },
       });
-      setRules(data.rules);
+      setRules(data.rules || []);
       setTotalPages(data.pageInfo?.totalPages || 1);
-      setLoading(false);
+      setTotalCount(data.pageInfo?.total || data.rules?.length || 0);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to load pricing rules');
+    } finally {
       setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    if(user){
-      getAllRules(page);
-    }
+    if (user) getAllRules(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[user, page]);
+  }, [user, page, pageSize]);
+
+  useEffect(() => {
+    fetchTheaters().then(setTheaters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleDay = (day) => {
-    setForm(f => ({
+    setForm((f) => ({
       ...f,
-      daysOfWeek: f.daysOfWeek.includes(day)
-        ? f.daysOfWeek.filter(d => d !== day)
-        : [...f.daysOfWeek, day].sort(),
+      daysOfWeek: f.daysOfWeek.includes(day) ? f.daysOfWeek.filter((d) => d !== day) : [...f.daysOfWeek, day].sort(),
     }));
-  }
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -70,10 +81,11 @@ const PricingRules = () => {
 
     const payload = {
       name: form.name,
-      type: form.type,
+      type: form.type === 'time_of_week' || form.type === 'early_bird' ? form.type : 'time_of_week',
       adjustmentPercent: Number(form.adjustmentPercent),
+      theaterId: form.theaterId || null,
     };
-    if (form.type === 'time_of_week') {
+    if (payload.type === 'time_of_week') {
       if (form.daysOfWeek.length === 0) return toast.error('Select at least one day');
       payload.daysOfWeek = form.daysOfWeek;
       payload.startHour = Number(form.startHour);
@@ -97,198 +109,195 @@ const PricingRules = () => {
       toast.error(error?.response?.data?.message || 'Failed to create pricing rule');
     }
     setCreating(false);
-  }
+  };
 
-  const toggleActive = async (rule) => {
+  const togglePause = async (rule) => {
     setSavingId(rule._id);
     try {
       const { data } = await axios.put(`/api/pricing-rule/${rule._id}`,
         { isActive: !rule.isActive },
         { headers: { Authorization: `Bearer ${await getToken()}` } });
       if (data.success) {
-        toast.success(rule.isActive ? 'Rule deactivated' : 'Rule reactivated');
-        getAllRules();
+        toast.success(rule.isActive ? 'Rule paused' : 'Rule activated');
+        getAllRules(page, true);
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to update rule');
     }
     setSavingId(null);
-  }
+  };
 
-  const handleDelete = async (ruleId) => {
-    setSavingId(ruleId);
+  const handleDelete = async (rule) => {
+    setSavingId(rule._id);
     try {
-      const { data } = await axios.delete(`/api/pricing-rule/${ruleId}`,
+      const { data } = await axios.delete(`/api/pricing-rule/${rule._id}`,
         { headers: { Authorization: `Bearer ${await getToken()}` } });
       if (data.success) {
         toast.success('Rule deleted');
-        getAllRules();
+        getAllRules(page, true);
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to delete rule');
     }
     setSavingId(null);
-  }
+  };
 
-  const describeRule = (rule) => {
+  const handleEdit = (rule) => {
+    setForm({
+      ...emptyForm,
+      name: rule.name,
+      type: rule.type,
+      adjustmentPercent: rule.adjustmentPercent,
+      daysOfWeek: rule.daysOfWeek || [5, 6],
+      startHour: rule.startHour ?? '18',
+      endHour: rule.endHour ?? '24',
+      minDaysBeforeShow: rule.minDaysBeforeShow ?? '7',
+      theaterId: rule.theaterId || '',
+      isActive: rule.isActive,
+    });
+    document.getElementById('create-rule-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast('Edit the fields below and create a new rule', { icon: '✏️' });
+  };
+
+  const handleDuplicate = async (rule) => {
+    const payload = {
+      name: `${rule.name} (Copy)`,
+      type: rule.type,
+      adjustmentPercent: rule.adjustmentPercent,
+      theaterId: rule.theaterId || null,
+    };
     if (rule.type === 'time_of_week') {
-      return `${rule.daysOfWeek.map(d => DAY_LABELS[d]).join(', ')}, ${rule.startHour}:00–${rule.endHour}:00`;
+      payload.daysOfWeek = rule.daysOfWeek;
+      payload.startHour = rule.startHour;
+      payload.endHour = rule.endHour;
+    } else {
+      payload.minDaysBeforeShow = rule.minDaysBeforeShow;
     }
-    return `Booked ≥ ${rule.minDaysBeforeShow} days before showtime`;
-  }
+    try {
+      const { data } = await axios.post('/api/pricing-rule', payload,
+        { headers: { Authorization: `Bearer ${await getToken()}` } });
+      if (data.success) {
+        toast.success('Rule duplicated');
+        getAllRules(page, true);
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to duplicate rule');
+    }
+  };
 
-  return !loading ? (
-    <>
-      <Title text1="Manage" text2="Pricing Rules"/>
+  const handleAnalytics = () => toast('Per-rule analytics coming soon', { icon: '📊' });
+  const handleImport = () => toast('Bulk import coming soon', { icon: '🚧' });
+  const handleHistory = () => toast('Full change history coming soon', { icon: '🚧' });
+  const handleExport = () => {
+    const rows = [
+      ['Name', 'Type', 'Adjustment %', 'Theater', 'Status', 'Created'],
+      ...filteredRules.map((r) => [r.name, r.type, r.adjustmentPercent, r.theaterId || 'Global', getRuleStatus(r), new Date(r.createdAt).toISOString()]),
+    ];
+    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pricing-rules-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('CSV exported');
+  };
 
-      <form onSubmit={handleCreate} className='mt-6 max-w-3xl flex flex-wrap gap-3 items-end'>
-        <div className='flex flex-col gap-1'>
-          <label className='text-xs text-gray-400'>Name</label>
-          <input
-            type="text"
-            value={form.name}
-            onChange={(e) => setForm(f => ({...f, name: e.target.value}))}
-            className={`${ADMIN_INPUT_CLASS} w-40`}
-            placeholder="Weekend evening surcharge"
-          />
-        </div>
-        <div className='flex flex-col gap-1'>
-          <label className='text-xs text-gray-400'>Type</label>
-          <Select
-            value={form.type}
-            onChange={(e) => setForm(f => ({...f, type: e.target.value}))}
-            options={[
-              { value: 'time_of_week', label: 'Time-of-week surcharge' },
-              { value: 'early_bird', label: 'Early-bird discount' },
-            ]}
-          />
-        </div>
-        <div className='flex flex-col gap-1'>
-          <label className='text-xs text-gray-400'>Adjustment %</label>
-          <input
-            type="number"
-            value={form.adjustmentPercent}
-            onChange={(e) => setForm(f => ({...f, adjustmentPercent: e.target.value}))}
-            className={`${ADMIN_INPUT_CLASS} w-24`}
-            placeholder="e.g. 20 or -10"
-          />
-        </div>
+  const theaterNameById = useMemo(() => Object.fromEntries(theaters.map((t) => [t._id, t.name])), [theaters]);
 
-        {form.type === 'time_of_week' ? (
-          <>
-            <div className='flex flex-col gap-1'>
-              <label className='text-xs text-gray-400'>Days</label>
-              <div className='flex gap-1'>
-                {DAY_LABELS.map((label, day) => (
-                  <button
-                    type="button"
-                    key={day}
-                    onClick={() => toggleDay(day)}
-                    className={`px-2 py-1.5 text-xs rounded border cursor-pointer ${form.daysOfWeek.includes(day) ? 'bg-primary border-primary' : 'border-primary/30'}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className='flex flex-col gap-1'>
-              <label className='text-xs text-gray-400'>Start hour</label>
-              <input
-                type="number" min="0" max="23"
-                value={form.startHour}
-                onChange={(e) => setForm(f => ({...f, startHour: e.target.value}))}
-                className={`${ADMIN_INPUT_CLASS} w-20`}
-              />
-            </div>
-            <div className='flex flex-col gap-1'>
-              <label className='text-xs text-gray-400'>End hour</label>
-              <input
-                type="number" min="1" max="24"
-                value={form.endHour}
-                onChange={(e) => setForm(f => ({...f, endHour: e.target.value}))}
-                className={`${ADMIN_INPUT_CLASS} w-20`}
-              />
-            </div>
-          </>
-        ) : (
-          <div className='flex flex-col gap-1'>
-            <label className='text-xs text-gray-400'>Min days before show</label>
-            <input
-              type="number" min="0"
-              value={form.minDaysBeforeShow}
-              onChange={(e) => setForm(f => ({...f, minDaysBeforeShow: e.target.value}))}
-              className={`${ADMIN_INPUT_CLASS} w-24`}
-            />
-          </div>
-        )}
+  const filteredRules = useMemo(() => {
+    let list = rules.filter((r) => {
+      if (filters.query && !r.name.toLowerCase().includes(filters.query.toLowerCase())) return false;
+      if (filters.type !== 'all' && r.type !== filters.type) return false;
+      if (filters.status !== 'all' && getRuleStatus(r) !== filters.status) return false;
+      if (filters.theater !== 'all' && (r.theaterId || '') !== filters.theater) return false;
+      return true;
+    });
 
-        <button
-          type="submit"
-          disabled={creating}
-          className={ADMIN_SUBMIT_BTN_CLASS}
-        >
-          {creating ? 'Creating...' : 'Create'}
-        </button>
-      </form>
+    switch (filters.sort) {
+      case 'created-asc': list = [...list].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); break;
+      case 'adjustment-desc': list = [...list].sort((a, b) => b.adjustmentPercent - a.adjustmentPercent); break;
+      case 'adjustment-asc': list = [...list].sort((a, b) => a.adjustmentPercent - b.adjustmentPercent); break;
+      default: list = [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+    return list;
+  }, [rules, filters]);
 
-      <div className='max-w-4xl mt-8 overflow-x-auto'>
-        <table className='w-full border-collapse rounded-md overflow-hidden text-nowrap'>
-          <thead>
-            <tr className='bg-primary/20 text-left text-white'>
-              <th className='p-2 font-medium pl-5'>Name</th>
-              <th className='p-2 font-medium'>Type</th>
-              <th className='p-2 font-medium'>Rule</th>
-              <th className='p-2 font-medium'>Adjustment</th>
-              <th className='p-2 font-medium'>Scope</th>
-              <th className='p-2 font-medium'>Status</th>
-              <th className='p-2 font-medium'>Actions</th>
-            </tr>
-          </thead>
+  const resetFilters = () => setFilters(DEFAULT_FILTERS);
+  const scrollToForm = () => document.getElementById('create-rule-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-          <tbody className='text-sm font-light'>
-            {rules.map((rule) => (
-              <tr key={rule._id} className='border-b border-primary/20 bg-primary/5 even:bg-primary/10'>
-                <td className='p-2 min-w-32 pl-5 font-medium'>{rule.name}</td>
-                <td className='p-2 capitalize'>{rule.type.replace(/_/g, ' ')}</td>
-                <td className='p-2'>{describeRule(rule)}</td>
-                <td className={`p-2 ${rule.adjustmentPercent > 0 ? 'text-amber-400' : 'text-green-400'}`}>
-                  {rule.adjustmentPercent > 0 ? '+' : ''}{rule.adjustmentPercent}%
-                </td>
-                <td className='p-2'>{rule.theaterId ? 'This theater' : 'Global'}</td>
-                <td className='p-2'>
-                  {rule.isActive ? (
-                    <span className='text-green-500 text-xs'>Active</span>
-                  ) : (
-                    <span className='text-red-500 text-xs'>Inactive</span>
-                  )}
-                </td>
-                <td className='p-2'>
-                  <div className='flex gap-2'>
-                    <button
-                      onClick={() => toggleActive(rule)}
-                      disabled={savingId === rule._id}
-                      className='text-primary text-xs font-medium cursor-pointer disabled:opacity-50'
-                    >
-                      {rule.isActive ? 'Deactivate' : 'Reactivate'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(rule._id)}
-                      disabled={savingId === rule._id}
-                      className='text-red-500 text-xs font-medium cursor-pointer disabled:opacity-50'
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+  if (loading) return <Loading />;
+
+  return (
+    <div className="space-y-5 pb-10">
+      <RevenuePricingHeader
+        onCreate={scrollToForm}
+        onImport={handleImport}
+        onExport={handleExport}
+        onSimulate={() => setSimulationOpen(true)}
+        onHistory={handleHistory}
+      />
+
+      <PricingKpiRow rules={rules} currency={currency} />
+
+      <div id="create-rule-panel">
+        <CreateRulePanel
+          form={form}
+          setForm={setForm}
+          theaters={theaters}
+          onToggleDay={toggleDay}
+          onSubmit={handleCreate}
+          creating={creating}
+          currency={currency}
+        />
       </div>
 
-      <PaginationControls page={page} totalPages={totalPages} onPageChange={setPage} />
-    </>
-  ) : <Loading />;
+      <RuleFilterBar filters={filters} setFilters={setFilters} theaters={theaters} onReset={resetFilters} resultCount={filteredRules.length} />
+
+      {filteredRules.length === 0 ? (
+        <RuleEmptyState onCreate={scrollToForm} filtered={rules.length > 0} onReset={resetFilters} />
+      ) : (
+        <div className="space-y-2.5">
+          <AnimatePresence mode="popLayout">
+            {filteredRules.map((rule, i) => (
+              <RuleRow
+                key={rule._id}
+                rule={rule}
+                i={i}
+                currency={currency}
+                theaterName={rule.theaterId ? theaterNameById[rule.theaterId] : null}
+                onEdit={handleEdit}
+                onDuplicate={handleDuplicate}
+                onTogglePause={togglePause}
+                onAnalytics={handleAnalytics}
+                onDelete={handleDelete}
+                savingId={savingId}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+
+      <PremiumPagination
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        totalCount={totalCount}
+        pageSize={pageSize}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        label="rules"
+      />
+
+      <SimulationPanel
+        open={simulationOpen}
+        onClose={() => setSimulationOpen(false)}
+        rules={rules}
+        theaters={theaters}
+        currency={currency}
+      />
+    </div>
+  );
 }
 
 export default PricingRules

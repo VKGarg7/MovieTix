@@ -1,12 +1,23 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useMotionValue, motion, useSpring, useTransform } from "framer-motion";
 import Loading from "../../components/Loading";
-import Title from "../../components/admin/Title";
-import {CheckIcon, DeleteIcon, SparklesIcon, StarIcon } from "lucide-react";
-import { kConverter } from "../../lib/kConverter";
+import { SparklesIcon } from "lucide-react";
 import { useAppContext } from "../../context/useAppContext";
 import useDebouncedSearch from "../../hooks/useDebouncedSearch";
 import SearchInput from "../../components/SearchInput";
 import toast from "react-hot-toast";
+
+import TheaterPickerDropdown from "../../components/admin/addshow/TheaterPickerDropdown";
+import ScreenPickerCards from "../../components/admin/addshow/ScreenPickerCards";
+import MoviePickerCarousel from "../../components/admin/addshow/MoviePickerCarousel";
+import SelectedMoviePreview from "../../components/admin/addshow/SelectedMoviePreview";
+import DateTimeScheduler from "../../components/admin/addshow/DateTimeScheduler";
+import PricingPanel from "../../components/admin/addshow/PricingPanel";
+import MysteryMovieConfigCard from "../../components/admin/addshow/MysteryMovieConfigCard";
+import ValidationChecklist from "../../components/admin/addshow/ValidationChecklist";
+import LiveSummaryCard from "../../components/admin/addshow/LiveSummaryCard";
+import AddShowActionBar from "../../components/admin/addshow/AddShowActionBar";
+import PreviewModal from "../../components/admin/addshow/PreviewModal";
 
 const nextDateForDayOfWeek = (dayOfWeek) => {
   const date = new Date();
@@ -16,8 +27,7 @@ const nextDateForDayOfWeek = (dayOfWeek) => {
 };
 
 const AddShows = () => {
-
-  const {axios , user , image_base_url , fetchTheaters , fetchScreens} = useAppContext();
+  const { axios, user, image_base_url, fetchTheaters, fetchScreens } = useAppContext();
 
   const currency = import.meta.env.VITE_CURRENCY;
   const [nowPlayingMovies, setNowPlayingMovies] = useState([]);
@@ -27,47 +37,53 @@ const AddShows = () => {
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
   const [dateTimeSelection, setDateTimeSelection] = useState({});
-  const [dateTimeInput, setDateTimeInput] = useState("");
   const [showPrice, setShowPrice] = useState("");
   const [addingShow, setAddingShow] = useState(false);
   const [isMysteryMovie, setIsMysteryMovie] = useState(false);
   const [mysteryRevealAt, setMysteryRevealAt] = useState("onBooking");
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const [theaters, setTheaters] = useState([]);
   const [selectedTheater, setSelectedTheater] = useState("");
   const [screens, setScreens] = useState([]);
   const [selectedScreen, setSelectedScreen] = useState("");
+  const [theaterDropdownOpen, setTheaterDropdownOpen] = useState(false);
 
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
+  const rootRef = useRef(null);
+  const mx = useMotionValue(0.5);
+  const my = useMotionValue(0.5);
+  const smx = useSpring(mx, { stiffness: 50, damping: 22 });
+  const smy = useSpring(my, { stiffness: 50, damping: 22 });
+  const spotlightBg = useTransform(
+    [smx, smy],
+    ([x, y]) => `radial-gradient(700px circle at ${x * 100}% ${y * 100}%, rgba(255,255,255,0.035), transparent 65%)`
+  );
+  const handlePointerMove = (e) => {
+    const rect = rootRef.current.getBoundingClientRect();
+    mx.set((e.clientX - rect.left) / rect.width);
+    my.set((e.clientY - rect.top) / rect.height);
+  };
+
   const fetchNowPlayingMovies = async () => {
     try {
       const { data } = await axios.get("/api/show/now-playing");
-        if(data.success) {
-          setNowPlayingMovies(data.movies);
-        }
-
+      if (data.success) setNowPlayingMovies(data.movies);
     } catch (error) {
       console.error("Error fetching movies:", error);
     }
   };
 
-  const handleDateTimeAdd = () => {
-    if (!dateTimeInput) return;
-    const [date, time] = dateTimeInput.split("T");
-    if (!date || !time) return;
-
+  const handleDateTimeAdd = (date, time) => {
     setDateTimeSelection((prev) => {
       const times = prev[date] || [];
-      if (!times.includes(time)) {
-        return { ...prev, [date]: [...times, time] };
-      }
-      return prev;
+      if (times.includes(time)) return prev;
+      return { ...prev, [date]: [...times, time] };
     });
-  setDateTimeInput("");
   };
-  
+
   const handleRemoveTime = (date, time) => {
     setDateTimeSelection((prev) => {
       const filteredTimes = prev[date].filter((t) => t !== time);
@@ -75,21 +91,31 @@ const AddShows = () => {
         const { [date]: _, ...rest } = prev;
         return rest;
       }
-      return { 
-        ...prev, [date]: filteredTimes 
-      };
+      return { ...prev, [date]: filteredTimes };
     });
+  };
+
+  const resetForm = () => {
+    setSelectedMovie(null);
+    setSelectedTheater("");
+    setSelectedScreen("");
+    setDateTimeSelection({});
+    setShowPrice("");
+    setIsMysteryMovie(false);
+    setMysteryRevealAt("onBooking");
+    setSearchInput("");
   };
 
   const handleSubmit = async () => {
     try {
-      setAddingShow(true)
+      setAddingShow(true);
 
-      if(!selectedMovie || !selectedScreen || Object.keys(dateTimeSelection).length === 0 || !showPrice) {
-        return toast('Missing required fields')
+      if (!selectedMovie || !selectedScreen || Object.keys(dateTimeSelection).length === 0 || !showPrice) {
+        toast("Missing required fields");
+        return;
       }
 
-      const showsInput = Object.entries(dateTimeSelection).map(([date, time]) => ({date, time}));
+      const showsInput = Object.entries(dateTimeSelection).map(([date, time]) => ({ date, time }));
 
       const payload = {
         movieId: selectedMovie,
@@ -98,36 +124,29 @@ const AddShows = () => {
         showPrice: Number(showPrice),
         isMysteryMovie,
         mysteryRevealAt,
-      }
+      };
 
-      const {data} = await axios.post('/api/show/add' , payload)
+      const { data } = await axios.post("/api/show/add", payload);
 
-      if(data.success) {
-        toast.success(data.message)
-        setSelectedMovie(null)
-        setSelectedTheater("")
-        setSelectedScreen("")
-        setDateTimeSelection({})
-        setShowPrice("")
-        setIsMysteryMovie(false)
-        setMysteryRevealAt("onBooking")
-      }else{
-        toast.error(data.message)
+      if (data.success) {
+        toast.success(data.message);
+        resetForm();
+        setPreviewOpen(false);
+      } else {
+        toast.error(data.message);
       }
-      
     } catch (error) {
       console.error("Submission error:", error);
       toast.error("An error occurred. Please try again.");
     }
-    setAddingShow(false)
-  }
-
+    setAddingShow(false);
+  };
 
   useEffect(() => {
-      if(user){
-        fetchNowPlayingMovies();
-        fetchTheaters().then(setTheaters);
-      }
+    if (user) {
+      fetchNowPlayingMovies();
+      fetchTheaters().then(setTheaters);
+    }
     // fetchNowPlayingMovies is a new function each render and intentionally
     // excluded so this only re-runs when the user changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,9 +163,7 @@ const AddShows = () => {
     const runSearch = async () => {
       setSearching(true);
       try {
-        const { data } = await axios.get("/api/show/search", {
-          params: { query: searchTerm },
-        });
+        const { data } = await axios.get("/api/show/search", { params: { query: searchTerm } });
         if (!cancelled && data.success) {
           const normalized = data.movies.map((movie) => ({
             id: movie.id ?? movie._id,
@@ -155,6 +172,8 @@ const AddShows = () => {
             release_date: movie.release_date,
             vote_average: movie.vote_average ?? 0,
             vote_count: movie.vote_count ?? 0,
+            original_language: movie.original_language,
+            overview: movie.overview,
           }));
           setSearchResults(normalized);
         }
@@ -166,7 +185,9 @@ const AddShows = () => {
     };
 
     runSearch();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [searchTerm, axios]);
 
   useEffect(() => {
@@ -192,9 +213,7 @@ const AddShows = () => {
         const { data } = await axios.get("/api/show/suggest-showtimes", {
           params: { movieId: selectedMovie, screenId: selectedScreen },
         });
-        if (!cancelled && data.success) {
-          setSuggestions(data.suggestions);
-        }
+        if (!cancelled && data.success) setSuggestions(data.suggestions);
       } catch (error) {
         console.error("Error fetching showtime suggestions:", error);
         if (!cancelled) setSuggestions([]);
@@ -203,269 +222,186 @@ const AddShows = () => {
     };
 
     fetchSuggestions();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedMovie, selectedScreen, axios]);
 
   const handleAcceptSuggestion = (suggestion) => {
     const date = nextDateForDayOfWeek(suggestion.dayOfWeek);
-    setDateTimeSelection((prev) => {
-      const times = prev[date] || [];
-      if (times.includes(suggestion.suggestedTime)) return prev;
-      return { ...prev, [date]: [...times, suggestion.suggestedTime] };
-    });
+    handleDateTimeAdd(date, suggestion.suggestedTime);
     setShowPrice(String(suggestion.suggestedPrice));
     toast.success(`Applied ${suggestion.dayLabel} ${suggestion.suggestedTime} suggestion`);
   };
 
-  return nowPlayingMovies.length > 0 ? (
-    <>
-      <Title text1="Add" text2="Shows" />
+  const moviePool = searchResults ?? nowPlayingMovies;
+  const selectedMovieObj = useMemo(() => moviePool.find((m) => m.id === selectedMovie) || null, [moviePool, selectedMovie]);
+  const selectedTheaterObj = theaters.find((t) => t._id === selectedTheater) || null;
+  const selectedScreenObj = screens.find((s) => s._id === selectedScreen) || null;
+  const canPublish = Boolean(selectedMovie && selectedScreen && Object.keys(dateTimeSelection).length > 0 && Number(showPrice) > 0);
 
-      <SearchInput
-        value={searchInput}
-        onChange={setSearchInput}
-        onClear={() => setSearchInput("")}
-        placeholder="Search for a movie..."
-        className="mt-6"
-      />
+  if (nowPlayingMovies.length === 0) return <Loading />;
 
-      <p className="mt-6 text-lg font-medium">
-        {searchResults ? "Search Results" : "Now Playing Movies"}
-      </p>
+  return (
+    <div ref={rootRef} onMouseMove={handlePointerMove} className="relative">
+      {/* cinematic ambient background */}
+      <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden">
+        <div
+          className="absolute -top-20 -left-10 w-[30rem] h-[30rem] rounded-full blur-[120px] opacity-20"
+          style={{ background: "radial-gradient(circle, rgba(109,92,255,0.5), transparent 70%)" }}
+        />
+        <div
+          className="absolute top-1/3 -right-20 w-[26rem] h-[26rem] rounded-full blur-[120px] opacity-15"
+          style={{ background: "radial-gradient(circle, rgba(63,216,224,0.45), transparent 70%)" }}
+        />
+        <div className="noise-overlay absolute inset-0" />
+        <motion.div className="absolute inset-0" style={{ background: spotlightBg }} />
+      </div>
 
-      {searching ? (
-        <p className="text-gray-400 text-sm mt-4">Searching...</p>
-      ) : searchResults && searchResults.length === 0 ? (
-        <p className="text-gray-400 text-sm mt-4">No movies match "{searchTerm}".</p>
-      ) : (
-      <div className="overflow-x-auto pb-4">
-        <div className="group flex flex-wrap gap-4 mt-4 w-max">
-          {(searchResults ?? nowPlayingMovies).map((movie) => (
-            <div
-              key={movie.id}
-              className={`relative max-w-40 cursor-progress group-hover:not-hover:opacity-40 hover:-translate-y-1 transition duration-300`}
-              onClick={() => setSelectedMovie(movie.id)}
-            >
-              <div className="relative rounded-lg overflow-hidden">
-                <img
-                  src={image_base_url + movie.poster_path}
-                  alt=""
-                  className="w-full object-cover brightness-90"
-                />
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-8">
+        <p className="section-eyebrow mb-2">Cinema Operations</p>
+        <h1 className="font-display text-3xl font-medium">Schedule a Show</h1>
+      </motion.div>
 
-                <div className="text-sm flex items-center justify-between p-2 bg-black/70 w-full absolute bottom-0 left-0">
-                  <p className="flex items-center gap-1 text-gray-400">
-                    <StarIcon className="w-4 h-4 text-primary fill-primary" />
-                    {movie.vote_average.toFixed(1)}
-                  </p>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+        <div className="space-y-8 min-w-0">
+          <section className="glass-panel p-5">
+            <p className="text-sm font-medium mb-3">Movie</p>
+            <SearchInput
+              value={searchInput}
+              onChange={setSearchInput}
+              onClear={() => setSearchInput("")}
+              suggestions={["Search for a movie…", "Try a title or keyword…"]}
+              className="mb-4"
+            />
+            {searching ? (
+              <p className="text-gray-400 text-sm">Searching…</p>
+            ) : searchResults && searchResults.length === 0 ? (
+              <p className="text-gray-400 text-sm">No movies match "{searchTerm}".</p>
+            ) : (
+              <MoviePickerCarousel
+                movies={moviePool}
+                selectedMovie={selectedMovie}
+                onSelect={setSelectedMovie}
+                imageBaseUrl={image_base_url}
+              />
+            )}
+          </section>
 
-                  <p className="text-gray-300">
-                    {kConverter(movie.vote_count)}Votes
-                  </p>
-                </div>
-              </div>
-
-              {selectedMovie === movie.id && (
-                <div className="absolute top-2 right-2 flex items-center justify-center bg-primary h-6 w-6 rounded">
-                  <CheckIcon className="w-4 h-4 text-white" strokeWidth={2.5} />
-                </div>
-              )}
-
-              <p className="font-medium truncate">{movie.title}</p>
-              <p className="text-gray-400 text-sm">{movie.release_date}</p>
+          <section className={`glass-panel p-5 relative ${theaterDropdownOpen ? "z-20" : "z-0"}`}>
+            <p className="text-sm font-medium mb-3">Theater & Screen</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <TheaterPickerDropdown
+                theaters={theaters}
+                value={selectedTheater}
+                onChange={setSelectedTheater}
+                onOpenChange={setTheaterDropdownOpen}
+              />
             </div>
-          ))}
-        </div>
-      </div>
-      )}
+            <ScreenPickerCards screens={screens} value={selectedScreen} onChange={setSelectedScreen} />
+          </section>
 
-      {/* theater and screen selection */}
-      <div className="mt-8 flex flex-wrap gap-6">
-        <div>
-          <label className="block text-sm font-medium mb-2">Theater</label>
-          <select
-            value={selectedTheater}
-            onChange={(e) => setSelectedTheater(e.target.value)}
-            className="border border-gray-600 bg-transparent px-3 py-2 rounded-md outline-none"
-          >
-            <option value="" className="text-black">Select a theater</option>
-            {theaters.map((theater) => (
-              <option key={theater._id} value={theater._id} className="text-black">
-                {theater.name} — {theater.city}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">Screen</label>
-          <select
-            value={selectedScreen}
-            onChange={(e) => setSelectedScreen(e.target.value)}
-            disabled={!selectedTheater}
-            className="border border-gray-600 bg-transparent px-3 py-2 rounded-md outline-none disabled:opacity-50"
-          >
-            <option value="" className="text-black">Select a screen</option>
-            {screens.map((screen) => (
-              <option key={screen._id} value={screen._id} className="text-black">
-                {screen.name} ({screen.totalCapacity} seats)
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {selectedMovie && selectedScreen && (
-        <div className="mt-8">
-          <label className="flex items-center gap-2 text-sm font-medium mb-2">
-            <SparklesIcon className="w-4 h-4 text-primary" />
-            Suggested Showtimes
-          </label>
-
-          {suggestionsLoading ? (
-            <p className="text-gray-400 text-sm">Loading suggestions...</p>
-          ) : suggestions.length === 0 ? (
-            <p className="text-gray-400 text-sm">No suggestions available.</p>
-          ) : (
-            <div className="flex flex-wrap gap-3">
-              {suggestions.map((s, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => handleAcceptSuggestion(s)}
-                  className="text-left border border-primary/30 hover:border-primary bg-primary/5 hover:bg-primary/10 transition rounded-md px-4 py-3 min-w-48"
-                >
-                  <p className="font-medium">{s.dayLabel} · {s.suggestedTime}</p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    {currency}{s.suggestedPrice} suggested price
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {s.basis === 'default'
-                      ? 'No history yet — default suggestion'
-                      : `${s.avgOccupancyPct}% avg occupancy · ${s.confidence} confidence`}
-                  </p>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* show price input */}
-      <div className="mt-8">
-        <label className="block text-sm font-medium mb-2">Show Price</label>
-
-        <div className="inline-flex items-center gap-2 border border-gray-600 px-3 py-2 rounded-md">
-          <p className="text-gray-400 text-sm">{currency}</p>
-          <input
-            min={0}
-            type="number"
-            value={showPrice}
-            onChange={(e) => setShowPrice(e.target.value)}
-            placeholder="Enter Show Price"
-            className="outline-none"
-          />
-        </div>
-      </div>
-
-      {/* mystery movie toggle */}
-      <div className="mt-8">
-        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer w-max">
-          <input
-            type="checkbox"
-            checked={isMysteryMovie}
-            onChange={(e) => setIsMysteryMovie(e.target.checked)}
-            className="cursor-pointer"
-          />
-          Mystery Movie show
-        </label>
-        <p className="text-gray-400 text-xs mt-1 max-w-md">
-          Users will only see genre, runtime and rating band until reveal — the title and poster stay hidden.
-        </p>
-
-        {isMysteryMovie && (
-          <div className="mt-3 inline-flex gap-1 border border-gray-600 p-1 rounded-lg">
-            {[
-              { value: "onBooking", label: "Reveal on booking" },
-              { value: "atTheater", label: "Reveal at theater only" },
-            ].map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setMysteryRevealAt(option.value)}
-                className={`px-3 py-1.5 text-xs rounded-md cursor-pointer transition ${
-                  mysteryRevealAt === option.value
-                    ? "bg-primary text-white"
-                    : "text-gray-400 hover:bg-primary/10"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* date and time selection */}
-      <div className="mt-6">
-        <label className="block text-sm font-medium mb-2">
-          Select
-          Date
-          and
-          Time
-        </label>
-        <div className="inline-flex gap-5 border border-gray-600 p-1 pl-3 rounded-lg">
-          <input
-            type="datetime-local"
-            value={dateTimeInput}
-            onChange={(e) => setDateTimeInput(e.target.value)}
-            className="outline-none rounded-md"
-          />
-
-          <button
-            onClick={handleDateTimeAdd}
-            className="bg-primary/80 text-white px-3 py-2 text-sm rounded-lg hover:bg-primary cursor-pointer"
-          >
-            Add Time
-          </button>
-        </div>
-      </div>
-
-      {/* display selected times */}
-      {Object.keys(dateTimeSelection).length > 0 && (
-        <div className="mt-6">
-          <h2 className="mb-2">Selected Date-Time</h2>
-          <ul className="space-y-3">
-            {Object.entries(dateTimeSelection).map(([date, times]) => (
-              <li key={date}>
-                <div className="font-medium">{date}</div>
-                <div className="flex flex-wrap gap-2 mt-1 text-sm">
-                  {times.map((time) => (
-                    <div
-                      key={time}
-                      className="border border-primary px-2 py-1 flex items-center rounded"
+          {selectedMovie && selectedScreen && (
+            <section className="glass-panel p-5">
+              <p className="flex items-center gap-2 text-sm font-medium mb-3">
+                <SparklesIcon className="w-4 h-4 text-nebula-violet" /> Suggested Showtimes
+              </p>
+              {suggestionsLoading ? (
+                <p className="text-gray-400 text-sm">Loading suggestions…</p>
+              ) : suggestions.length === 0 ? (
+                <p className="text-gray-400 text-sm">No suggestions available.</p>
+              ) : (
+                <div className="flex flex-wrap gap-3">
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => handleAcceptSuggestion(s)}
+                      className="text-left border border-nebula-violet/25 hover:border-nebula-violet/50 bg-nebula-violet/[0.04] hover:bg-nebula-violet/10 transition-colors rounded-xl px-4 py-3 min-w-48 cursor-pointer"
                     >
-                      <span>{time}</span>
-                      <DeleteIcon
-                        onClick={() => handleRemoveTime(date, time)}
-                        width={15}
-                        className="ml-2 text-red-500 hover:text-rose-700 cursor-pointer"
-                      />
-                    </div>
+                      <p className="font-medium text-sm">{s.dayLabel} · {s.suggestedTime}</p>
+                      <p className="text-xs text-gray-400 mt-1">{currency}{s.suggestedPrice} suggested price</p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        {s.basis === "default" ? "No history yet — default suggestion" : `${s.avgOccupancyPct}% avg occupancy · ${s.confidence} confidence`}
+                      </p>
+                    </button>
                   ))}
                 </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+              )}
+            </section>
+          )}
 
-      <button onClick={handleSubmit} disabled={addingShow} className="bg-primary text-white px-8 py-2 mt-6 rounded hover:bg-primary/90 transition-all cursor-pointer">
-        Add Show
-      </button>
-    </>
-  ) : (
-    <Loading />
+          <section className="glass-panel p-5">
+            <p className="text-sm font-medium mb-3">Schedule</p>
+            <DateTimeScheduler dateTimeSelection={dateTimeSelection} onAdd={handleDateTimeAdd} onRemove={handleRemoveTime} />
+          </section>
+
+          <section className="glass-panel p-5">
+            <p className="text-sm font-medium mb-3">Pricing</p>
+            <PricingPanel
+              showPrice={showPrice}
+              onPriceChange={setShowPrice}
+              theaterId={selectedTheater}
+              dateTimeSelection={dateTimeSelection}
+              currency={currency}
+            />
+          </section>
+
+          <MysteryMovieConfigCard
+            isMysteryMovie={isMysteryMovie}
+            onToggle={setIsMysteryMovie}
+            mysteryRevealAt={mysteryRevealAt}
+            onRevealChange={setMysteryRevealAt}
+          />
+
+          <AddShowActionBar
+            onCancel={resetForm}
+            onPreview={() => setPreviewOpen(true)}
+            onPublish={handleSubmit}
+            publishing={addingShow}
+            canPublish={canPublish}
+          />
+        </div>
+
+        <div className="space-y-4 lg:sticky lg:top-6">
+          <div className="glass-panel p-5">
+            <p className="section-eyebrow mb-4">Live Preview</p>
+            <SelectedMoviePreview movie={selectedMovieObj} imageBaseUrl={image_base_url} />
+          </div>
+
+          <LiveSummaryCard
+            movie={selectedMovieObj}
+            theater={selectedTheaterObj}
+            screen={selectedScreenObj}
+            showPrice={showPrice}
+            dateTimeSelection={dateTimeSelection}
+            currency={currency}
+          />
+
+          <ValidationChecklist
+            selectedMovie={selectedMovie}
+            selectedTheater={selectedTheater}
+            selectedScreen={selectedScreen}
+            dateTimeSelection={dateTimeSelection}
+            showPrice={showPrice}
+          />
+        </div>
+      </div>
+
+      <PreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        movie={selectedMovieObj}
+        theater={selectedTheaterObj}
+        screen={selectedScreenObj}
+        showPrice={showPrice}
+        dateTimeSelection={dateTimeSelection}
+        isMysteryMovie={isMysteryMovie}
+        mysteryRevealAt={mysteryRevealAt}
+        currency={currency}
+        imageBaseUrl={image_base_url}
+      />
+    </div>
   );
 };
 
