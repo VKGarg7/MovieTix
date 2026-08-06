@@ -1,17 +1,18 @@
-import React from "react";
-import { useParams } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { BookingFlowProvider, useBookingFlow } from "../../context/BookingFlowContext";
 import { STEPS } from "../../context/bookingFlowSteps";
 import { useAppContext } from "../../context/useAppContext";
 import Stepper from "../../components/cinematic/Stepper";
 import StepTransition from "../../components/cinematic/StepTransition";
+import BookingSidebar from "../../components/cinematic/BookingSidebar";
 import MovieStep from "./MovieStep";
 import TheaterStep from "./TheaterStep";
 import DateStep from "./DateStep";
 import SeatStep from "./SeatStep";
 import FoodStep from "./FoodStep";
 import PaymentStep from "./PaymentStep";
-import { useEffect } from "react";
+import Loading from "../../components/Loading";
 
 const STEP_COMPONENTS = {
   movie: MovieStep,
@@ -22,34 +23,83 @@ const STEP_COMPONENTS = {
   payment: PaymentStep,
 };
 
-const FlowSeeder = () => {
+const FlowSeeder = ({ onReady }) => {
   const { movieId } = useParams();
-  const { shows, selectedTheater } = useAppContext();
-  const { state, patch } = useBookingFlow();
+  const [searchParams] = useSearchParams();
+  const { shows, selectedTheater, fetchShowDetails } = useAppContext();
+  const { state, patch, goToStep } = useBookingFlow();
+  const seededRef = useRef(false);
 
   useEffect(() => {
-    if (movieId && !state.movie && shows.length > 0) {
-      const match = shows.find((s) => s._id === movieId);
-      if (match) patch({ movie: match });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [movieId, shows]);
+    if (seededRef.current) return;
+    if (!movieId) return;
 
-  useEffect(() => {
-    if (selectedTheater && !state.theater) {
-      patch({ theater: selectedTheater });
+    if (shows.length === 0) {
+      const timer = setTimeout(() => {
+        if (!seededRef.current) {
+          seededRef.current = true;
+          onReady();
+        }
+      }, 4000);
+      return () => clearTimeout(timer);
     }
+
+    const match = state.movie?._id === movieId ? state.movie : shows.find((s) => s._id === movieId);
+    if (!match) {
+      seededRef.current = true;
+      onReady();
+      return;
+    }
+
+    const theater = state.theater || selectedTheater;
+    const dateParam = searchParams.get("date");
+    const showIdParam = searchParams.get("showId");
+
+    if (!theater) {
+      seededRef.current = true;
+      patch({ movie: match });
+      onReady();
+      return;
+    }
+
+    if (!dateParam) {
+      seededRef.current = true;
+      patch({ movie: match, theater });
+      goToStep(STEPS.indexOf("theater"));
+      onReady();
+      return;
+    }
+
+    seededRef.current = true;
+    (async () => {
+      const data = await fetchShowDetails(match._id, theater._id);
+      const showtimesForDate = data?.dateTime?.[dateParam] || [];
+      const time = showIdParam
+        ? showtimesForDate.find((s) => s.showId === showIdParam)
+        : null;
+
+      patch({
+        movie: match,
+        theater,
+        show: data,
+        date: dateParam,
+        time: time || null,
+      });
+      goToStep(STEPS.indexOf(time ? "seat" : "date"));
+      onReady();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTheater]);
+  }, [movieId, shows, selectedTheater]);
 
   return null;
 };
 
 const FlowBody = () => {
-  const { currentStep, stepIndex, direction, goToStep } = useBookingFlow();
+  const { movieId } = useParams();
+  const { currentStep, stepIndex, direction, goToStep, state } = useBookingFlow();
+  const [seeding, setSeeding] = useState(Boolean(movieId));
   const StepComponent = STEP_COMPONENTS[currentStep];
 
-  const { state } = useBookingFlow();
   const maxReachedIndex = (() => {
     if (!state.movie) return 0;
     if (!state.theater) return 1;
@@ -59,12 +109,23 @@ const FlowBody = () => {
   })();
 
   return (
-    <div className="px-6 md:px-16 lg:px-40 pt-36 pb-32">
-      <FlowSeeder />
-      <Stepper stepIndex={stepIndex} maxReachedIndex={Math.max(stepIndex, maxReachedIndex)} onStepClick={goToStep} />
-      <StepTransition stepKey={currentStep} direction={direction}>
-        <StepComponent />
-      </StepTransition>
+    <div className="px-6 md:px-10 lg:px-16 xl:px-24 pt-36 pb-40 lg:pb-24">
+      {movieId && <FlowSeeder onReady={() => setSeeding(false)} />}
+      {seeding ? (
+        <Loading />
+      ) : (
+        <>
+          <Stepper stepIndex={stepIndex} maxReachedIndex={Math.max(stepIndex, maxReachedIndex)} onStepClick={goToStep} />
+          <div className="flex flex-col lg:flex-row gap-8 max-w-7xl mx-auto items-start">
+            <div className="flex-1 min-w-0 w-full">
+              <StepTransition stepKey={currentStep} direction={direction}>
+                <StepComponent />
+              </StepTransition>
+            </div>
+            <BookingSidebar />
+          </div>
+        </>
+      )}
     </div>
   );
 };

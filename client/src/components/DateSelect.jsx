@@ -22,7 +22,7 @@ const DateSelect = ({ dateTime, id }) => {
     if (isDateSoldOut(dateTime[selected])) {
       return toast("All showtimes on this date are sold out — join the waitlist below");
     }
-    navigate(`/movies/${id}/${selected}`);
+    navigate(`/book/${id}?date=${selected}`);
     scrollTo(0, 0);
   };
 
