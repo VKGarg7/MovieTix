@@ -23,6 +23,7 @@ const navLinks = [
   { to: "/", label: "Home" },
   { to: "/movies", label: "Movies" },
   { to: "/theaters", label: "Theaters" },
+  { to: "/community/screenings", label: "Open Screen" },
 ];
 
 const Navbar = ({ onChangeLocation }) => {

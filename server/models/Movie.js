@@ -15,6 +15,7 @@ const movieSchema = new mongoose.Schema(
         vote_average: {type: Number, required: true},
         runtime: {type: Number, required: true},
         hasPostCreditsScene: {type: Boolean, default: false},
+        trailerUrl: {type: String, default: null},
     } , {timestamps: true}
 )
 

@@ -5,6 +5,8 @@ import timeFormat from "../lib/timeFormat";
 import isoTimeFormat from "../lib/isoTimeFormat";
 import {
   StarIcon,
+  TrendingUpIcon,
+  TrendingDownIcon,
   Heart,
   PlayCircleIcon,
   BellIcon,
@@ -34,6 +36,7 @@ import GlassPanel from "../components/cinematic/GlassPanel";
 import MetaChip from "../components/cinematic/MetaChip";
 import RatingStars from "../components/cinematic/RatingStars";
 import ReviewCard from "../components/cinematic/ReviewCard";
+import EmotionalBreakdown from "../components/cinematic/EmotionalBreakdown";
 import { getTheaterPresentation } from "../lib/theaterPresentation";
 import { EASE_CINEMATIC } from "../lib/motion";
 import { dummyTrailers } from "../assets/assets";
@@ -78,6 +81,8 @@ const MovieDetails = () => {
   const [reviews, setReviews] = useState([]);
   const [averageRating, setAverageRating] = useState(null);
   const [reviewCount, setReviewCount] = useState(0);
+  const [emotionalBreakdown, setEmotionalBreakdown] = useState([]);
+  const [emotionalTotal, setEmotionalTotal] = useState(0);
   const [myReview, setMyReview] = useState(null);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
@@ -135,6 +140,18 @@ const MovieDetails = () => {
         setReviews(data.reviews);
         setAverageRating(data.averageRating);
         setReviewCount(data.reviewCount);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const getEmotionalBreakdown = async () => {
+    try {
+      const { data } = await axios.get(`/api/emotional-pulse/movie/${id}`);
+      if (data.success) {
+        setEmotionalBreakdown(data.breakdown);
+        setEmotionalTotal(data.total);
       }
     } catch (error) {
       console.error(error);
@@ -302,6 +319,7 @@ const MovieDetails = () => {
   useEffect(() => {
     getShow();
     getReviews();
+    getEmotionalBreakdown();
     getSimilarMovies();
     getTheaters();
     // re-run when the movie id or active theater changes, not on every render
@@ -442,6 +460,15 @@ const MovieDetails = () => {
                   {averageRating !== null && (
                     <MetaChip icon={StarIcon} i={1}>
                       {averageRating.toFixed(1)} ({reviewCount} {reviewCount === 1 ? "review" : "reviews"})
+                    </MetaChip>
+                  )}
+                  {show.movie.divergenceBadge && (
+                    <MetaChip
+                      icon={show.movie.divergenceBadge === "underrated" ? TrendingUpIcon : TrendingDownIcon}
+                      i={1.5}
+                      tone={show.movie.divergenceBadge === "underrated" ? "cyan" : "violet"}
+                    >
+                      {show.movie.divergenceBadge === "underrated" ? "Underrated" : "Overhyped"}
                     </MetaChip>
                   )}
                   <MetaChip icon={CalendarIcon} i={2}>{show.movie.release_date.split("-")[0]}</MetaChip>
@@ -766,6 +793,8 @@ const MovieDetails = () => {
                 </div>
               </GlassPanel>
             )}
+
+            <EmotionalBreakdown breakdown={emotionalBreakdown} total={emotionalTotal} />
 
             {user && (
               <div className="max-w-xl glass-panel p-5 mb-8">

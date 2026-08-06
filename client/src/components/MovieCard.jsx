@@ -1,4 +1,4 @@
-import { TicketIcon, Heart, PlayIcon, GlobeIcon, SparklesIcon } from "lucide-react";
+import { TicketIcon, Heart, PlayIcon, GlobeIcon, SparklesIcon, TrendingUpIcon, TrendingDownIcon } from "lucide-react";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMotionValue, motion, useSpring, useTransform, AnimatePresence } from "framer-motion";
@@ -237,6 +237,20 @@ const MovieCard = ({ movie }) => {
           {isNowPlaying && (
             <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wide bg-primary/90 backdrop-blur-md">
               NOW PLAYING
+            </div>
+          )}
+
+          {!isMystery && movie.divergenceBadge && (
+            <div
+              className={`absolute left-2.5 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wide backdrop-blur-md flex items-center gap-1 ${isNowPlaying ? "top-9" : "top-2.5"} ${
+                movie.divergenceBadge === "underrated" ? "bg-nebula-cyan/90 text-void" : "bg-nebula-violet/90"
+              }`}
+            >
+              {movie.divergenceBadge === "underrated" ? (
+                <><TrendingUpIcon className="w-3 h-3" /> UNDERRATED</>
+              ) : (
+                <><TrendingDownIcon className="w-3 h-3" /> OVERHYPED</>
+              )}
             </div>
           )}
 

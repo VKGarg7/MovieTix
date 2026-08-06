@@ -32,6 +32,9 @@ const bookingSchema = new mongoose.Schema({
     giftCardCode: {type: String, default: null},
     giftCardAmountUsed: {type: Number, default: 0},
     ticketNonce: {type: String, default: () => crypto.randomBytes(9).toString('base64url')},
+    leaveNowReminderOptedIn: {type: Boolean, default: false},
+    leaveNowReminderScheduledAt: {type: Date, default: null},
+    leaveNowReminderSent: {type: Boolean, default: false},
 } , {timestamps: true});
 
 const Booking = mongoose.model('Booking', bookingSchema);

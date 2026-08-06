@@ -13,6 +13,7 @@ import OccupancyChart from "../../components/admin/OccupancyChart";
 import TopMoviesChart from "../../components/admin/TopMoviesChart";
 import TopTheatersChart from "../../components/admin/TopTheatersChart";
 import GenreDistributionChart from "../../components/admin/GenreDistributionChart";
+import CommunityRevenueTable from "../../components/admin/CommunityRevenueTable";
 import { defaultDateRange } from "../../lib/dateRange";
 import DashboardHero from "../../components/admin/dashboard/DashboardHero";
 import KpiCard from "../../components/admin/dashboard/KpiCard";
@@ -225,6 +226,12 @@ const Dashboard = () => {
             <div className="glass-panel p-5 lg:col-span-2">
               <p className="font-medium mb-3 text-sm">Top Theaters by Revenue</p>
               <TopTheatersChart data={analytics.topTheaters} currency={currency} />
+            </div>
+          )}
+          {analytics?.communityRevenue?.length > 0 && (
+            <div className="glass-panel p-5 lg:col-span-2">
+              <p className="font-medium mb-3 text-sm">Community &amp; Indie Screening Revenue</p>
+              <CommunityRevenueTable data={analytics.communityRevenue} currency={currency} />
             </div>
           )}
         </div>

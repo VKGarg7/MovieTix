@@ -19,6 +19,8 @@ import { fetchApplicableRules, computeShowPrice } from '../utils/dynamicPricing.
 import { getShowtimeSuggestions } from '../utils/showtimeSuggestions.js';
 import { recordAudit } from '../utils/auditLog.js';
 import { maskMovieForMystery } from '../utils/mysteryMovie.js';
+import Review from '../models/Review.js';
+import { computeDivergenceBadge } from '../utils/divergenceBadge.js';
 
 
 export const getNowPlayingMovies = asyncHandler(async (req, res) => {
@@ -274,6 +276,21 @@ export const suggestShowtimes = asyncHandler(async (req, res) => {
 });
 
 
+const getReviewStatsByMovie = async (movieIds) => {
+    if (movieIds.length === 0) return new Map();
+    const stats = await Review.aggregate([
+        { $match: { movie: { $in: movieIds } } },
+        { $group: { _id: '$movie', averageRating: { $avg: '$rating' }, reviewCount: { $sum: 1 } } },
+    ]);
+    return new Map(stats.map(s => [s._id, s]));
+};
+
+const withDivergenceBadge = (movie, reviewStatsByMovie) => {
+    const stats = reviewStatsByMovie.get(movie._id);
+    const divergenceBadge = computeDivergenceBadge(movie.vote_average, stats?.averageRating ?? null, stats?.reviewCount ?? 0);
+    return divergenceBadge ? { ...movie.toObject(), divergenceBadge } : movie;
+};
+
 export const getShows = asyncHandler(async (req, res) => {
     const { theaterId } = req.query;
 
@@ -302,12 +319,13 @@ export const getShows = asyncHandler(async (req, res) => {
 
     const movies = await Movie.find({ _id: { $in: movieOrder.map(m => m._id) } });
     const movieById = new Map(movies.map(movie => [movie._id.toString(), movie]));
+    const reviewStatsByMovie = await getReviewStatsByMovie(movies.map(m => m._id));
 
     const orderedMovies = movieOrder
         .map(({ _id, allMysteryUnrevealed }) => {
             const movie = movieById.get(_id.toString());
             if (!movie) return null;
-            return allMysteryUnrevealed ? maskMovieForMystery(movie) : movie;
+            return allMysteryUnrevealed ? maskMovieForMystery(movie) : withDivergenceBadge(movie, reviewStatsByMovie);
         })
         .filter(Boolean);
 
@@ -383,7 +401,13 @@ export const getShow = asyncHandler(async (req, res) => {
         })
     }
 
-    const responseMovie = allShownMysteryUnrevealed ? maskMovieForMystery(movie) : movie;
+    let responseMovie = movie;
+    if (allShownMysteryUnrevealed) {
+        responseMovie = maskMovieForMystery(movie);
+    } else if (movie) {
+        const reviewStatsByMovie = await getReviewStatsByMovie([movie._id]);
+        responseMovie = withDivergenceBadge(movie, reviewStatsByMovie);
+    }
 
     res.json({ success: true, movie: responseMovie, dateTime })
 });

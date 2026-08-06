@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { EyeOffIcon, XIcon, TicketIcon, HistoryIcon, GiftIcon, UsersIcon, ClockIcon, SparklesIcon, WalletCardsIcon, RepeatIcon } from "lucide-react";
+import { EyeOffIcon, XIcon, TicketIcon, HistoryIcon, GiftIcon, UsersIcon, ClockIcon, SparklesIcon, WalletCardsIcon, RepeatIcon, ClapperboardIcon } from "lucide-react";
 import Loading from "../components/Loading";
 import PageHeader from "../components/cinematic/PageHeader";
 import timeFormat from "../lib/timeFormat";
@@ -12,6 +12,9 @@ import useFetchOnUser from "../hooks/useFetchOnUser";
 import useScrollToHash from "../hooks/useScrollToHash";
 import BingePass from "../components/BingePass";
 import TicketTransferModal from "../components/TicketTransferModal";
+import EmotionalPulsePrompt from "../components/EmotionalPulsePrompt";
+import LeaveNowReminderOptIn from "../components/LeaveNowReminderOptIn";
+import TrailerVoteWidget from "../components/TrailerVoteWidget";
 
 const TRANSFER_CUTOFF_MINUTES = 30;
 
@@ -343,6 +346,20 @@ const MyBookings = () => {
           <RepeatIcon className="w-4 h-4" />
           Browse Resale Tickets
         </Link>
+        <Link
+          to="/community/screenings"
+          className="flex items-center gap-2 text-sm text-nebula-cyan font-medium hover:underline w-fit"
+        >
+          <ClapperboardIcon className="w-4 h-4" />
+          Open Screen: Community Screenings
+        </Link>
+        <Link
+          to="/community/my-requests"
+          className="flex items-center gap-2 text-sm text-nebula-cyan font-medium hover:underline w-fit"
+        >
+          <ClapperboardIcon className="w-4 h-4" />
+          My Screening Requests
+        </Link>
       </div>
 
       <BingePass />
@@ -612,6 +629,18 @@ const MyBookings = () => {
 
                 {activeTab === "Upcoming" && item.show?.showDateTime && (
                   <Countdown showDateTime={item.show.showDateTime} />
+                )}
+
+                {activeTab === "Upcoming" && item.isPaid && item.status === "confirmed" && (
+                  <LeaveNowReminderOptIn bookingId={item._id} alreadyOptedIn={item.leaveNowReminderOptedIn} />
+                )}
+
+                {activeTab === "Upcoming" && item.isPaid && item.status === "confirmed" && item.show?._id && (
+                  <TrailerVoteWidget showId={item.show._id} />
+                )}
+
+                {activeTab === "Completed" && item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && (
+                  <EmotionalPulsePrompt bookingId={item._id} />
                 )}
 
                 {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.show?.movie &&

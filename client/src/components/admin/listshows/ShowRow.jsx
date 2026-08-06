@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDownIcon, ClockIcon, Building2Icon, MonitorPlayIcon, StarIcon,
   EyeIcon, PencilIcon, CopyIcon, BarChart3Icon, Trash2Icon, SparklesIcon,
-  ArmchairIcon, PopcornIcon, TicketPercentIcon, UsersIcon,
+  ArmchairIcon, PopcornIcon, TicketPercentIcon, UsersIcon, FilmIcon,
 } from "lucide-react";
 import { dateFormat } from "../../../lib/dateFomat";
 import ShowStatusPill from "./ShowStatusPill";
@@ -22,7 +22,7 @@ const formatCountdown = (ms) => {
   return `in ${minutes}m`;
 };
 
-const ShowRow = ({ show, i, now, currency, imageBaseUrl, selected, onToggleSelect, onEdit, onDelete, onDuplicate, onAnalytics, savingId }) => {
+const ShowRow = ({ show, i, now, currency, imageBaseUrl, selected, onToggleSelect, onEdit, onDelete, onDuplicate, onAnalytics, onExportTrailerVote, savingId }) => {
   const [expanded, setExpanded] = useState(false);
 
   const status = getShowStatus(show, now);
@@ -122,6 +122,9 @@ const ShowRow = ({ show, i, now, currency, imageBaseUrl, selected, onToggleSelec
           <ActionIconButton icon={PencilIcon} label="Edit" onClick={() => onEdit(show)} disabled={show.isCancelled} />
           <ActionIconButton icon={CopyIcon} label="Duplicate" onClick={() => onDuplicate(show)} />
           <ActionIconButton icon={BarChart3Icon} label="Analytics" onClick={() => onAnalytics(show)} />
+          {onExportTrailerVote && (
+            <ActionIconButton icon={FilmIcon} label="Trailer Vote CSV" onClick={() => onExportTrailerVote(show)} />
+          )}
           <ActionIconButton icon={Trash2Icon} label="Delete" danger onClick={() => onDelete(show._id)} disabled={show.isCancelled || savingId === show._id} />
         </div>
 

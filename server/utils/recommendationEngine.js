@@ -1,18 +1,14 @@
-// v1: weighted genre-overlap score computed on read. Kept isolated from the
-// controller so a future collaborative-filtering/embedding model can replace
-// scoreCandidates() without touching the signal-gathering or API contract.
-
 import { getGenreNames } from './movieGenres.js';
 
 const BOOKING_SIGNAL_WEIGHT = 3;
 const FOLLOW_SIGNAL_WEIGHT = 1;
+const EMOTIONAL_TAG_SIGNAL_WEIGHT = 1;
 const MAX_RECOMMENDATIONS = 5;
 
-// signals: [{ movie, weight }] — one entry per booked/followed movie the user has a
-// relationship with, already deduplicated by the caller.
-export const scoreCandidates = (candidates, signals) => {
-    const genreWeight = new Map(); // genreName -> accumulated weight
-    const genreSource = new Map(); // genreName -> title of the highest-weight contributing movie
+
+export const scoreCandidates = (candidates, signals, { userTagWeight, candidateTagDistribution } = {}) => {
+    const genreWeight = new Map(); 
+    const genreSource = new Map(); 
 
     for (const { movie, weight } of signals) {
         for (const genreName of getGenreNames(movie)) {
@@ -39,6 +35,18 @@ export const scoreCandidates = (candidates, signals) => {
             }
         }
 
+        if (userTagWeight && candidateTagDistribution) {
+            const candidateTags = candidateTagDistribution.get(candidate._id) || candidateTagDistribution.get(candidate._id?.toString());
+            if (candidateTags) {
+                for (const [tag, count] of candidateTags) {
+                    const userWeight = userTagWeight.get(tag) || 0;
+                    if (userWeight > 0) {
+                        score += EMOTIONAL_TAG_SIGNAL_WEIGHT * userWeight * count;
+                    }
+                }
+            }
+        }
+
         const reason = bestGenre
             ? `Because you liked ${genreSource.get(bestGenre)} (${bestGenre})`
             : 'Top rated on our platform';
@@ -62,4 +70,4 @@ export const scoreCandidates = (candidates, signals) => {
     return { recommendations: withMatch };
 };
 
-export { BOOKING_SIGNAL_WEIGHT, FOLLOW_SIGNAL_WEIGHT, MAX_RECOMMENDATIONS };
+export { BOOKING_SIGNAL_WEIGHT, FOLLOW_SIGNAL_WEIGHT, EMOTIONAL_TAG_SIGNAL_WEIGHT, MAX_RECOMMENDATIONS };

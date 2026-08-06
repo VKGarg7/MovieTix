@@ -26,6 +26,8 @@ import PriceWatch from "../models/PriceWatch.js";
 import { getComputedPriceForShow } from "../utils/dynamicPricing.js";
 import { refundBingePassCredit } from "../controllers/subscriptionController.js";
 import TicketTransfer from "../models/TicketTransfer.js";
+import CommunityScreeningRequest from "../models/CommunityScreeningRequest.js";
+import { estimateTravelMinutes } from "../utils/directionsClient.js";
 
 export const inngest = new Inngest({ id: "movie-ticket-booking" });
 
@@ -309,6 +311,75 @@ const sendGiftTicketEmail = inngest.createFunction(
   }
 )
 
+const notifyScreeningRequestApproved = inngest.createFunction(
+  { id: 'notify-screening-request-approved' },
+  { event: 'app/community-screening.approved' },
+  async ({ event }) => {
+    const { requestId, showId } = event.data;
+
+    const request = await CommunityScreeningRequest.findById(requestId);
+    if (!request) return;
+
+    const requester = await User.findById(request.requesterId);
+    if (!requester) return;
+
+    const show = await Show.findById(showId).populate(SCREEN_WITH_THEATER);
+    if (!show) return;
+
+    const { date: showDate, time: showTime } = formatInZone(show.showDateTime, show.screen?.theater?.timezone);
+    const manageUrl = `${process.env.CLIENT_URL}/community/my-requests`;
+
+    await sendEmail({
+      to: requester.email,
+      subject: `Your screening request for "${request.filmTitle}" was approved!`,
+      body: renderEmail({
+        greetingName: requester.name,
+        bodyHtml: `
+          <p>Great news — your screening request for ${highlight(`"${request.filmTitle}"`)} was approved and is now
+             a real, bookable show on <strong>${showDate}</strong> at <strong>${showTime}</strong>
+             at ${highlight(show.screen?.theater?.name || 'the theater')}.</p>
+          <p>Your revenue split is ${highlight(`${show.revenueSplitPercent}%`)} of ticket sales for this show.</p>
+          <p>Share the word — bookings open immediately in the normal MovieTix browse flow.</p>
+          <p><a href="${manageUrl}">View your requests</a></p>
+        `,
+        closingLine: 'Break a leg! 🎬',
+      }),
+    });
+
+    logger.info({ requestId, showId }, 'Screening request approval emailed to host');
+  }
+)
+
+const notifyScreeningRequestRejected = inngest.createFunction(
+  { id: 'notify-screening-request-rejected' },
+  { event: 'app/community-screening.rejected' },
+  async ({ event }) => {
+    const { requestId } = event.data;
+
+    const request = await CommunityScreeningRequest.findById(requestId);
+    if (!request) return;
+
+    const requester = await User.findById(request.requesterId);
+    if (!requester) return;
+
+    await sendEmail({
+      to: requester.email,
+      subject: `Update on your screening request for "${request.filmTitle}"`,
+      body: renderEmail({
+        greetingName: requester.name,
+        bodyHtml: `
+          <p>Your screening request for ${highlight(`"${request.filmTitle}"`)} was not approved this time.</p>
+          ${request.rejectionReason ? `<p>Reason: <em>${request.rejectionReason}</em></p>` : ''}
+          <p>Feel free to browse other open slots and submit another request.</p>
+        `,
+        closingLine: 'Thanks for your interest in screening with us.',
+      }),
+    });
+
+    logger.info({ requestId }, 'Screening request rejection emailed to host');
+  }
+)
+
 const sendDirectTicketTransferEmail = inngest.createFunction(
   { id: 'send-direct-ticket-transfer-email' },
   { event: 'app/ticket-transfer.direct-sent' },
@@ -488,6 +559,81 @@ const sendBookingConfirmationEmail = inngest.createFunction(
   }
 )
 
+
+const LEAVE_NOW_BUFFER_MINUTES = 15;
+const FALLBACK_MINUTES_BEFORE_SHOW = 45;
+const theaterNameOrFallback = (show) => show.screen?.theater?.name || 'the theater';
+
+const scheduleLeaveNowReminder = inngest.createFunction(
+  { id: 'schedule-leave-now-reminder' },
+  { event: 'app/leave-now-reminder.optin' },
+  async ({ event, step }) => {
+    const { bookingId, originLat, originLng } = event.data;
+
+    const { leaveAt, usedFallback } = await step.run('compute-leave-time', async () => {
+      const booking = await Booking.findById(bookingId);
+      if (!booking || !booking.leaveNowReminderOptedIn) return { leaveAt: null };
+
+      const show = await Show.findById(booking.show).populate(SCREEN_WITH_THEATER);
+      const theater = show?.screen?.theater;
+      if (!show || !theater?.geolocation) return { leaveAt: null };
+
+      const travelMinutes = await estimateTravelMinutes({
+        originLat, originLng,
+        destLat: theater.geolocation.lat, destLng: theater.geolocation.lng,
+      });
+
+      const offsetMinutes = travelMinutes !== null
+        ? travelMinutes + LEAVE_NOW_BUFFER_MINUTES
+        : FALLBACK_MINUTES_BEFORE_SHOW;
+
+      const computedLeaveAt = new Date(show.showDateTime.getTime() - offsetMinutes * 60 * 1000);
+
+      await Booking.updateOne({ _id: bookingId }, { $set: { leaveNowReminderScheduledAt: computedLeaveAt } });
+
+      return { leaveAt: computedLeaveAt, usedFallback: travelMinutes === null };
+    });
+
+    if (!leaveAt || leaveAt.getTime() <= Date.now()) {
+      logger.info({ bookingId }, 'Leave-now reminder skipped (already past leave time or booking no longer eligible)');
+      return;
+    }
+
+    await step.sleepUntil('wait-until-leave-time', leaveAt);
+
+    await step.run('send-leave-now-email', async () => {
+      const booking = await Booking.findById(bookingId);
+      if (!booking || !booking.isPaid || booking.status !== 'confirmed' || !booking.leaveNowReminderOptedIn) return;
+
+      const show = await Show.findById(booking.show).populate('movie').populate(SCREEN_WITH_THEATER);
+      const user = await User.findById(booking.user);
+      if (!show || !user) return;
+
+      const { date: showDate, time: showTime } = formatInZone(show.showDateTime, show.screen?.theater?.timezone);
+      const movieTitle = isMysteryRevealed(show, { isPaid: true }) ? show.movie.title : 'Mystery Movie';
+
+      await sendEmail({
+        to: user.email,
+        subject: `Time to leave for "${movieTitle}"!`,
+        body: renderEmail({
+          greetingName: user.name,
+          bodyHtml: `
+            <p>${highlight("It's time to head out")} for ${highlight(`"${movieTitle}"`)} at
+               <strong>${showDate}</strong>, <strong>${showTime}</strong>, based on current traffic
+               to ${theaterNameOrFallback(show)}.</p>
+            <p>This is a best-effort estimate from current traffic conditions at the time it was calculated —
+               it doesn't account for changes between now and when you actually leave, so build in a little
+               extra cushion if you can.</p>
+          `,
+          closingLine: 'Drive safe! 🍿',
+        }),
+      });
+
+      await Booking.updateOne({ _id: bookingId }, { $set: { leaveNowReminderSent: true } });
+      logger.info({ bookingId, usedFallback }, 'Leave-now reminder sent');
+    });
+  }
+)
 
 const sendShowReminders = inngest.createFunction(
   {id: 'send-show-reminders'},
@@ -785,4 +931,4 @@ const sendPostCreditsAlerts = inngest.createFunction(
   }
 )
 
-export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdation, releaseSeatsAndDeleteBooking , sendBookingConfirmationEmail , sendShowReminders , sendNewShowNotification, expireGroupBooking, sendWaitlistOffer, expireShowtimePoll, notifyShowtimePollClosed, sendPriceDropAlerts, sendPostCreditsAlerts, sendGiftCardEmail, sendGiftTicketEmail, sendDirectTicketTransferEmail, notifyResaleCompleted];
+export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdation, releaseSeatsAndDeleteBooking , sendBookingConfirmationEmail , sendShowReminders , sendNewShowNotification, expireGroupBooking, sendWaitlistOffer, expireShowtimePoll, notifyShowtimePollClosed, sendPriceDropAlerts, sendPostCreditsAlerts, sendGiftCardEmail, sendGiftTicketEmail, sendDirectTicketTransferEmail, notifyResaleCompleted, notifyScreeningRequestApproved, notifyScreeningRequestRejected, scheduleLeaveNowReminder];

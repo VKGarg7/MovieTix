@@ -49,6 +49,11 @@ const VerifyPickup = lazy(() => import('./pages/admin/VerifyPickup'))
 const ManageTheaters = lazy(() => import('./pages/admin/ManageTheaters'))
 const AuditLog = lazy(() => import('./pages/admin/AuditLog'))
 const MultiplexPulse = lazy(() => import('./pages/admin/MultiplexPulse'))
+const OpenScreen = lazy(() => import('./pages/admin/OpenScreen'))
+const CommunityHosts = lazy(() => import('./pages/admin/CommunityHosts'))
+const CommunityScreeningBrowse = lazy(() => import('./pages/CommunityScreeningBrowse'))
+const CommunityHostApply = lazy(() => import('./pages/CommunityHostApply'))
+const CommunityMyRequests = lazy(() => import('./pages/CommunityMyRequests'))
 
 const App = () => {
 
@@ -98,6 +103,10 @@ const App = () => {
         <Route path='/account' element={<Account/>} />
         <Route path='/loading/:nextUrl' element={<Loading/>} />
 
+        <Route path='/community/screenings' element={<CommunityScreeningBrowse/>} />
+        <Route path='/community/apply' element={<CommunityHostApply/>} />
+        <Route path='/community/my-requests' element={<CommunityMyRequests/>} />
+
         <Route path='/favourite' element={<Favourite/>} />
         <Route path='/theaters' element={<Theaters/>} />
         <Route path='/theaters/:id' element={<TheaterDetails/>} />
@@ -118,6 +127,8 @@ const App = () => {
           <Route path='manage-theaters' element={<ManageTheaters/>}/>
           <Route path='audit-log' element={<AuditLog/>}/>
           <Route path='multiplex-pulse' element={<MultiplexPulse/>}/>
+          <Route path='open-screen' element={<OpenScreen/>}/>
+          <Route path='community-hosts' element={<CommunityHosts/>}/>
         </Route>
 
       </Routes>

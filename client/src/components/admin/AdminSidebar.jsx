@@ -14,6 +14,8 @@ import {
   BuildingIcon,
   ScrollTextIcon,
   ActivityIcon,
+  ClapperboardIcon,
+  UsersRoundIcon,
 } from "lucide-react";
 import { useAppContext } from "../../context/useAppContext";
 import AdminProfileCard from "./AdminProfileCard";
@@ -39,6 +41,7 @@ const buildNavGroups = (adminRole) => [
       { name: "Menu Items", path: "/admin/menu-items", icon: PopcornIcon },
       { name: "Verify Pickup", path: "/admin/verify-pickup", icon: QrCodeIcon },
       { name: "Multiplex Pulse", path: "/admin/multiplex-pulse", icon: ActivityIcon },
+      { name: "Open Screen", path: "/admin/open-screen", icon: ClapperboardIcon },
     ],
   },
   ...(adminRole === "superAdmin"
@@ -47,6 +50,7 @@ const buildNavGroups = (adminRole) => [
           label: "System",
           items: [
             { name: "Manage Theaters", path: "/admin/manage-theaters", icon: BuildingIcon },
+            { name: "Community Hosts", path: "/admin/community-hosts", icon: UsersRoundIcon },
             { name: "Audit Log", path: "/admin/audit-log", icon: ScrollTextIcon },
           ],
         },

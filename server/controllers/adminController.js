@@ -142,7 +142,7 @@ export const getDashboardAnalytics = asyncHandler(async (req, res) => {
         bookingMatch.show = { $in: showIds };
     }
 
-    const [revenueTrend, topMovies, topTheaters, genreDistribution] = await Promise.all([
+    const [revenueTrend, topMovies, topTheaters, genreDistribution, communityRevenue] = await Promise.all([
         Booking.aggregate([
             { $match: bookingMatch },
             {
@@ -232,6 +232,44 @@ export const getDashboardAnalytics = asyncHandler(async (req, res) => {
             { $limit: 8 },
             { $project: { _id: 0, genre: '$_id', bookings: 1, revenue: 1 } },
         ]),
+        Booking.aggregate([
+            { $match: bookingMatch },
+            { $addFields: { showObjectId: { $toObjectId: '$show' } } },
+            { $lookup: { from: 'shows', localField: 'showObjectId', foreignField: '_id', as: 'showDoc' } },
+            { $unwind: '$showDoc' },
+            { $match: { 'showDoc.communityHostId': { $ne: null } } },
+            {
+                $lookup: {
+                    from: 'communityhosts',
+                    localField: 'showDoc.communityHostId',
+                    foreignField: '_id',
+                    as: 'hostDoc',
+                },
+            },
+            { $unwind: '$hostDoc' },
+            {
+                $group: {
+                    _id: '$hostDoc._id',
+                    hostName: { $first: '$hostDoc.organizationName' },
+                    revenueSplitPercent: { $first: '$showDoc.revenueSplitPercent' },
+                    totalRevenue: { $sum: '$amount' },
+                    bookings: { $sum: 1 },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    hostId: '$_id',
+                    hostName: 1,
+                    revenueSplitPercent: 1,
+                    totalRevenue: 1,
+                    hostShare: { $round: [{ $multiply: ['$totalRevenue', { $divide: ['$revenueSplitPercent', 100] }] }, 2] },
+                    theaterShare: { $round: [{ $multiply: ['$totalRevenue', { $divide: [{ $subtract: [100, '$revenueSplitPercent'] }, 100] }] }, 2] },
+                    bookings: 1,
+                },
+            },
+            { $sort: { totalRevenue: -1 } },
+        ]),
     ]);
 
     const showMatch = {
@@ -300,6 +338,7 @@ export const getDashboardAnalytics = asyncHandler(async (req, res) => {
             topTheaters,
             genreDistribution,
             occupancyByShow,
+            communityRevenue,
         },
     });
 });
