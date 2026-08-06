@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
-import { CreditCardIcon, ShieldCheckIcon, SmartphoneIcon, LandmarkIcon, WalletIcon, TicketIcon, GiftIcon, CoinsIcon } from "lucide-react";
+import { CreditCardIcon, ShieldCheckIcon, SmartphoneIcon, LandmarkIcon, WalletIcon, TicketIcon, GiftIcon, CoinsIcon, WalletCardsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../../context/useAppContext";
 import { useBookingFlow } from "../../context/BookingFlowContext";
@@ -32,6 +32,9 @@ const PaymentStep = () => {
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
   const [bingePassEligibility, setBingePassEligibility] = useState(null);
   const [useBingePassCredit, setUseBingePassCredit] = useState(false);
+  const [giftCardInput, setGiftCardInput] = useState("");
+  const [appliedGiftCard, setAppliedGiftCard] = useState(null);
+  const [giftCardLoading, setGiftCardLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -82,9 +85,11 @@ const PaymentStep = () => {
     ? Math.min(pointsToRedeem * pointsConfig.redemptionValue, ticketAmountAfterCoupon * pointsConfig.maxRedemptionFractionOfAmount)
     : 0;
   const bingePassDiscount = useBingePassCredit ? Math.min(ticketAmountAfterCoupon, ticketAmount) : 0;
+  const amountBeforeGiftCard = Math.max(0, ticketAmountAfterCoupon - pointsDiscount - bingePassDiscount);
+  const giftCardDiscount = appliedGiftCard ? Math.min(appliedGiftCard.balance, amountBeforeGiftCard) : 0;
   const convenienceFee = Math.round(ticketAmount * 0.02);
   const taxes = Math.round(ticketAmount * 0.05);
-  const total = Math.max(0, ticketAmountAfterCoupon - pointsDiscount - bingePassDiscount) + snacksTotal + convenienceFee + taxes;
+  const total = Math.max(0, amountBeforeGiftCard - giftCardDiscount) + snacksTotal + convenienceFee + taxes;
 
   const applyCoupon = async () => {
     if (!couponInput.trim()) return toast.error("Enter a coupon code");
@@ -124,6 +129,31 @@ const PaymentStep = () => {
     setRedeemPointsInput("");
   };
 
+  const applyGiftCard = async () => {
+    if (!giftCardInput.trim()) return toast.error("Enter a gift card code");
+    setGiftCardLoading(true);
+    try {
+      const { data } = await axios.post(
+        "/api/gift-card/validate",
+        { code: giftCardInput.trim() },
+        { headers: { Authorization: `Bearer ${await getToken()}` } }
+      );
+      if (data.success) {
+        setAppliedGiftCard({ code: giftCardInput.trim().toUpperCase(), balance: data.balance });
+        toast.success("Gift card applied");
+      }
+    } catch (error) {
+      setAppliedGiftCard(null);
+      toast.error(error.response?.data?.message || error.message);
+    }
+    setGiftCardLoading(false);
+  };
+
+  const removeGiftCard = () => {
+    setAppliedGiftCard(null);
+    setGiftCardInput("");
+  };
+
   const bookTickets = async () => {
     if (!user) return toast.error("Please login to book tickets");
     setSubmitting(true);
@@ -137,6 +167,7 @@ const PaymentStep = () => {
           snacks: selectedSnacks,
           redeemPoints: pointsToRedeem || undefined,
           useBingePassCredit,
+          giftCardCode: appliedGiftCard?.code || undefined,
         },
         { headers: { Authorization: `Bearer ${await getToken()}` } }
       );
@@ -162,7 +193,6 @@ const PaymentStep = () => {
       <StepHeader step={6} title="Review & Pay" />
 
       <div className="grid lg:grid-cols-[1fr_380px] gap-6">
-        {/* left: payment methods */}
         <div className="flex flex-col gap-6">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-panel p-6">
             <p className="text-sm font-medium mb-4">Payment Method</p>
@@ -245,6 +275,29 @@ const PaymentStep = () => {
               </div>
             )}
 
+            <div>
+              <p className="text-sm font-medium mb-2 flex items-center gap-2"><WalletCardsIcon className="w-4 h-4 text-primary" /> Gift Card</p>
+              {appliedGiftCard ? (
+                <div className="flex items-center justify-between bg-primary/10 border border-primary/30 rounded-full px-4 py-2 text-sm">
+                  <span><span className="font-medium text-primary">{appliedGiftCard.code}</span> applied ({currency}{appliedGiftCard.balance} available)</span>
+                  <button onClick={removeGiftCard} className="text-gray-400 text-xs cursor-pointer hover:text-white transition-colors">Remove</button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Gift card code"
+                    value={giftCardInput}
+                    onChange={(e) => setGiftCardInput(e.target.value)}
+                    className="flex-1 glass-input"
+                  />
+                  <button onClick={applyGiftCard} disabled={giftCardLoading} className="px-4 py-2 text-sm bg-white/10 hover:bg-primary transition-colors rounded-full cursor-pointer disabled:opacity-50">
+                    Apply
+                  </button>
+                </div>
+              )}
+            </div>
+
             {bingePassEligibility?.eligible && (
               <div>
                 <p className="text-sm font-medium mb-2 flex items-center gap-2"><GiftIcon className="w-4 h-4 text-primary" /> Binge Pass</p>
@@ -271,7 +324,6 @@ const PaymentStep = () => {
           </div>
         </div>
 
-        {/* right: order summary */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -324,6 +376,12 @@ const PaymentStep = () => {
               <div className="flex justify-between text-primary">
                 <span>Binge Pass credit</span>
                 <span>-{currency}{bingePassDiscount}</span>
+              </div>
+            )}
+            {giftCardDiscount > 0 && (
+              <div className="flex justify-between text-primary">
+                <span>Gift card ({appliedGiftCard.code})</span>
+                <span>-{currency}{giftCardDiscount}</span>
               </div>
             )}
             <div className="flex justify-between font-semibold text-base pt-2 border-t border-white/10">

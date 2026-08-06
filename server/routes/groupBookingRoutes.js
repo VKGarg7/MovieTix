@@ -6,6 +6,7 @@ import {
     getGroupBookingManageStatus,
     getMyGroupBookings,
     cancelGroupBooking,
+    giftTicket,
 } from '../controllers/groupBookingController.js';
 import { protectUser } from '../middleware/auth.js';
 import { groupStatusPollingLimiter } from '../middleware/rateLimit.js';
@@ -58,6 +59,51 @@ const groupBookingRouter = express.Router();
  *         $ref: '#/components/responses/ServerError'
  */
 groupBookingRouter.post('/create', protectUser, createGroupBooking);
+
+/**
+ * @openapi
+ * /group-booking/gift:
+ *   post:
+ *     summary: Gift a specific show's ticket to a recipient by email
+ *     tags: [GroupBooking]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: signed-in user (becomes the purchaser). Reserves a single seat as a size-1 group booking and emails the recipient a claim link — reuses the same seat-hold/claim/expiry mechanism as a normal watch-party group booking. The recipient picks/confirms their own seat via the standard /group-booking/{groupId}/claim flow, and an unclaimed seat is released back to availability at expiry."
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [showId, seat, recipientEmail]
+ *             properties:
+ *               showId: { type: string, example: "60f7c0f1e1b1c8a1b8f1e1b1" }
+ *               seat: { type: string, example: "A1" }
+ *               recipientEmail: { type: string, example: "friend@example.com" }
+ *               message: { type: string, example: "Happy birthday! Enjoy the show." }
+ *               expiresInHours: { type: integer, example: 72, description: "Defaults to 24, max 72." }
+ *     responses:
+ *       200:
+ *         description: Ticket gifted, claim link emailed to the recipient
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               groupId: "66f7c0f1e1b1c8a1b8f1e1b1"
+ *               shareUrl: "https://movietix.example.com/group-booking/66f7c0f1e1b1c8a1b8f1e1b1"
+ *               expiresAt: "2026-08-09T12:00:00.000Z"
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         $ref: '#/components/responses/Conflict'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+groupBookingRouter.post('/gift', protectUser, giftTicket);
 
 /**
  * @openapi

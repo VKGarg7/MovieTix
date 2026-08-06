@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { EyeOffIcon, XIcon, TicketIcon, HistoryIcon, GiftIcon, UsersIcon, ClockIcon } from "lucide-react";
+import { EyeOffIcon, XIcon, TicketIcon, HistoryIcon, GiftIcon, UsersIcon, ClockIcon, SparklesIcon, WalletCardsIcon, RepeatIcon } from "lucide-react";
 import Loading from "../components/Loading";
 import PageHeader from "../components/cinematic/PageHeader";
 import timeFormat from "../lib/timeFormat";
@@ -11,6 +11,9 @@ import toast from "react-hot-toast";
 import useFetchOnUser from "../hooks/useFetchOnUser";
 import useScrollToHash from "../hooks/useScrollToHash";
 import BingePass from "../components/BingePass";
+import TicketTransferModal from "../components/TicketTransferModal";
+
+const TRANSFER_CUTOFF_MINUTES = 30;
 
 const CANCELLATION_CUTOFF_HOURS = 2;
 const TABS = ["Upcoming", "Completed", "Cancelled"];
@@ -89,6 +92,7 @@ const MyBookings = () => {
   const [groupBookings, setGroupBookings] = useState([]);
   const [waitlistEntries, setWaitlistEntries] = useState([]);
   const [leavingWaitlistShowId, setLeavingWaitlistShowId] = useState(null);
+  const [transferModalBooking, setTransferModalBooking] = useState(null);
 
   const getMyBookings = async (category, targetPage) => {
     try {
@@ -243,6 +247,13 @@ const MyBookings = () => {
     new Date(item.show.showDateTime).getTime() - Date.now() >
       CANCELLATION_CUTOFF_HOURS * 60 * 60 * 1000;
 
+  const canTransfer = (item) =>
+    item.isPaid &&
+    item.status === "confirmed" &&
+    item.show?.showDateTime &&
+    new Date(item.show.showDateTime).getTime() - Date.now() >
+      TRANSFER_CUTOFF_MINUTES * 60 * 1000;
+
   const handleCancel = async (bookingId) => {
     setCancellingId(bookingId);
     try {
@@ -309,6 +320,30 @@ const MyBookings = () => {
   return !isLoading ? (
     <div className="relative px-6 md:px-16 lg:px-40 pt-36 pb-24 md:pt-52 min-h-[80vh]">
       <PageHeader eyebrow="Your Account" title="My Bookings" />
+
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-6">
+        <Link
+          to="/wrapped"
+          className="flex items-center gap-2 text-sm text-nebula-violet font-medium hover:underline w-fit"
+        >
+          <SparklesIcon className="w-4 h-4" />
+          See your MovieTix Wrapped
+        </Link>
+        <Link
+          to="/gift-card/buy"
+          className="flex items-center gap-2 text-sm text-primary font-medium hover:underline w-fit"
+        >
+          <WalletCardsIcon className="w-4 h-4" />
+          Buy a Gift Card
+        </Link>
+        <Link
+          to="/resale"
+          className="flex items-center gap-2 text-sm text-primary font-medium hover:underline w-fit"
+        >
+          <RepeatIcon className="w-4 h-4" />
+          Browse Resale Tickets
+        </Link>
+      </div>
 
       <BingePass />
 
@@ -613,6 +648,17 @@ const MyBookings = () => {
                     Pay Now
                   </motion.a>
                 }
+                {canTransfer(item) &&
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => setTransferModalBooking(item)}
+                    className="border border-primary text-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50 hover:bg-primary/10 transition-colors flex items-center gap-1.5"
+                  >
+                    <RepeatIcon className="w-3.5 h-3.5" />
+                    Transfer / Resell
+                  </motion.button>
+                }
                 {canCancel(item) &&
                   <motion.button
                     whileHover={{ scale: 1.03 }}
@@ -709,6 +755,17 @@ const MyBookings = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {transferModalBooking && (
+        <TicketTransferModal
+          booking={transferModalBooking}
+          onClose={() => setTransferModalBooking(null)}
+          onDone={() => {
+            setTransferModalBooking(null);
+            getMyBookings(activeTab, page);
+          }}
+        />
+      )}
     </div>
   ) : (
     <Loading />

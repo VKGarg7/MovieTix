@@ -11,6 +11,7 @@ import { parsePagination, buildPageMeta } from '../utils/pagination.js';
 import { getPointsBalance, POINTS_CONFIG } from '../utils/loyaltyPoints.js';
 import { assignReferralCode } from '../utils/referrals.js';
 import { isMysteryRevealed, maskMovieForMystery } from '../utils/mysteryMovie.js';
+import { SEAT_ID_PATTERN } from '../utils/seatId.js';
 
 const CANCELLED_STATUSES = ['cancelled', 'pending-cancellation'];
 
@@ -200,6 +201,111 @@ export const getPointsHistory = asyncHandler(async (req, res) => {
     ]);
 
     res.json({ success: true, transactions, pageInfo: buildPageMeta(page, limit, total) });
+});
+
+
+const MIN_BOOKINGS_FOR_WRAPPED = 2;
+
+export const getWrapped = asyncHandler(async (req, res) => {
+    const userId = req.auth().userId;
+
+    const paidMatch = { user: userId, isPaid: true, status: { $nin: CANCELLED_STATUSES } };
+
+    const joinShowAndMovie = [
+        {
+            $lookup: {
+                from: 'shows',
+                let: { showId: '$show' },
+                pipeline: [{ $match: { $expr: { $eq: [{ $toString: '$_id' }, '$$showId'] } } }],
+                as: 'show',
+            },
+        },
+        { $unwind: '$show' },
+        { $lookup: { from: 'movies', localField: 'show.movie', foreignField: '_id', as: 'movie' } },
+        { $unwind: '$movie' },
+        { $lookup: { from: 'screens', localField: 'show.screen', foreignField: '_id', as: 'screen' } },
+        { $unwind: '$screen' },
+        { $lookup: { from: 'theaters', localField: 'screen.theater', foreignField: '_id', as: 'theater' } },
+        { $unwind: '$theater' },
+    ];
+
+    const [bookings, totalSpentAgg, userCount, spentBelowMeCount] = await Promise.all([
+        Booking.aggregate([{ $match: paidMatch }, ...joinShowAndMovie]),
+        Booking.aggregate([{ $match: paidMatch }, { $group: { _id: '$user', total: { $sum: '$amount' } } }]),
+        Booking.aggregate([{ $match: { isPaid: true, status: { $nin: CANCELLED_STATUSES } } }, { $group: { _id: '$user' } }, { $count: 'count' }]),
+        (async () => {
+            const [{ total: mySpend } = { total: 0 }] = await Booking.aggregate([
+                { $match: paidMatch },
+                { $group: { _id: '$user', total: { $sum: '$amount' } } },
+            ]);
+            const perUserSpend = await Booking.aggregate([
+                { $match: { isPaid: true, status: { $nin: CANCELLED_STATUSES } } },
+                { $group: { _id: '$user', total: { $sum: '$amount' } } },
+                { $match: { total: { $lte: mySpend } } },
+                { $count: 'count' },
+            ]);
+            return perUserSpend[0]?.count || 0;
+        })(),
+    ]);
+
+    const totalBookings = bookings.length;
+
+    if (totalBookings < MIN_BOOKINGS_FOR_WRAPPED) {
+        return res.json({ success: true, hasEnoughHistory: false, totalBookings });
+    }
+
+    const totalSpent = totalSpentAgg[0]?.total || 0;
+    const totalPopulation = userCount[0]?.count || 1;
+    const spendPercentile = Math.round((spentBelowMeCount / totalPopulation) * 100);
+
+    const genreCounts = new Map();
+    const theaterCounts = new Map();
+    const rowCounts = new Map();
+    let longestMovie = null;
+    let totalSeats = 0;
+
+    for (const booking of bookings) {
+        for (const genre of booking.movie.genres || []) {
+            genreCounts.set(genre.name, (genreCounts.get(genre.name) || 0) + 1);
+        }
+
+        const theaterKey = booking.theater._id.toString();
+        const theaterEntry = theaterCounts.get(theaterKey) || { name: booking.theater.name, city: booking.theater.city, count: 0 };
+        theaterEntry.count += 1;
+        theaterCounts.set(theaterKey, theaterEntry);
+
+        for (const seat of booking.bookedSeats || []) {
+            const match = SEAT_ID_PATTERN.exec(seat);
+            if (match) {
+                const row = match[1];
+                rowCounts.set(row, (rowCounts.get(row) || 0) + 1);
+            }
+            totalSeats += 1;
+        }
+
+        if (!longestMovie || (booking.movie.runtime || 0) > longestMovie.runtime) {
+            longestMovie = { title: booking.movie.title, runtime: booking.movie.runtime || 0, poster_path: booking.movie.poster_path };
+        }
+    }
+
+    const topByCount = (counts) => [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+
+    const favoriteGenre = topByCount(genreCounts)?.[0] || null;
+    const favoriteRow = topByCount(rowCounts)?.[0] || null;
+    const topTheaterEntry = [...theaterCounts.values()].sort((a, b) => b.count - a.count)[0] || null;
+
+    res.json({
+        success: true,
+        hasEnoughHistory: true,
+        totalBookings,
+        totalSeats,
+        totalSpent,
+        favoriteGenre,
+        favoriteRow,
+        mostVisitedTheater: topTheaterEntry ? { name: topTheaterEntry.name, city: topTheaterEntry.city, visits: topTheaterEntry.count } : null,
+        longestMovie,
+        spendPercentile,
+    });
 });
 
 

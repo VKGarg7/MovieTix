@@ -22,6 +22,8 @@ import couponRouter from './routes/couponRoutes.js';
 import pricingRuleRouter from './routes/pricingRuleRoutes.js';
 import menuRouter from './routes/menuRoutes.js';
 import subscriptionRouter from './routes/subscriptionRoutes.js';
+import giftCardRouter from './routes/giftCardRoutes.js';
+import ticketTransferRouter from './routes/ticketTransferRoutes.js';
 import { stripeWebhooks } from './controllers/stripeWebhooks.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { logger, httpLogger } from './configs/logger.js';
@@ -34,21 +36,17 @@ await connectDB();
 
 app.use(httpLogger);
 
-// stripe webhooks route
 app.use('/api/stripe' , express.raw({ type: 'application/json' }) , stripeWebhooks);
 
-// origins allowed to call this API (comma-separated in CORS_ORIGIN)
 const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
     : ['http://localhost:5173', 'https://movietix-rho.vercel.app'];
 
-// Middleware
 app.use(express.json());
 app.use(cors({ origin: allowedOrigins }));
 app.use(clerkMiddleware())
 
 
-// API Routes
 app.get('/', (req, res) => res.send('Server is Live!'))
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec))
 app.use('/api/inngest', serve({ client: inngest, functions }))
@@ -68,8 +66,9 @@ app.use('/api/coupon', couponRouter);
 app.use('/api/pricing-rule', pricingRuleRouter);
 app.use('/api/menu', menuRouter);
 app.use('/api/subscription', subscriptionRouter);
+app.use('/api/gift-card', giftCardRouter);
+app.use('/api/ticket-transfer', ticketTransferRouter);
 
-// 404 + centralized error handling (must be registered after all routes)
 app.use(notFoundHandler);
 app.use(errorHandler);
 

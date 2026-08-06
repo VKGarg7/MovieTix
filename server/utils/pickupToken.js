@@ -4,16 +4,23 @@ const sign = (payload) => {
     return crypto.createHmac('sha256', process.env.QR_TOKEN_SECRET).update(payload).digest('base64url');
 };
 
-export const createPickupToken = (bookingId) => {
-    const payload = bookingId.toString();
+export const createPickupToken = (bookingId, ticketNonce) => {
+    const payload = `${bookingId}.${ticketNonce}`;
     const signature = sign(payload);
     return `${payload}.${signature}`;
 };
 
 export const verifyPickupToken = (token) => {
-    if (typeof token !== 'string' || !token.includes('.')) return null;
+    if (typeof token !== 'string') return null;
 
-    const [payload, signature] = token.split('.');
+    const lastDot = token.lastIndexOf('.');
+    if (lastDot === -1) return null;
+
+    const payload = token.slice(0, lastDot);
+    const signature = token.slice(lastDot + 1);
+    const [bookingId, ticketNonce] = payload.split('.');
+    if (!bookingId || !ticketNonce) return null;
+
     const expectedSignature = sign(payload);
 
     const signatureBuffer = Buffer.from(signature);
@@ -22,5 +29,5 @@ export const verifyPickupToken = (token) => {
         return null;
     }
 
-    return payload;
+    return { bookingId, ticketNonce };
 };

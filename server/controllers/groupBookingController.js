@@ -10,6 +10,7 @@ import { releaseSeatsAndNotifyWaitlist, occupySeatsIfFree } from '../utils/seatO
 import { SCREEN_WITH_THEATER } from '../utils/theaterScope.js';
 import { releaseCouponAtomic } from './couponController.js';
 import { reverseEarnedPoints, refundRedeemedPoints } from '../utils/loyaltyPoints.js';
+import { refundGiftCardAtomic } from '../utils/giftCardPricing.js';
 import { runBookingCheckout, MAX_SEATS_PER_BOOKING } from './bookingController.js';
 import { updateClaimsForSeats, revertClaimsToUnclaimed } from '../utils/groupBookingClaims.js';
 
@@ -83,6 +84,43 @@ export const createGroupBookingForShow = async ({ organizerId, showId, seatBlock
     };
 };
 
+export const giftTicket = asyncHandler(async (req, res) => {
+    const { userId } = req.auth();
+    const { showId, seat, recipientEmail, message, expiresInHours } = req.body;
+    const { origin } = req.headers;
+
+    if (!recipientEmail || typeof recipientEmail !== 'string') {
+        throw new AppError('recipientEmail is required', 400, 'INVALID_INPUT');
+    }
+    if (!seat || typeof seat !== 'string') {
+        throw new AppError('seat is required', 400, 'INVALID_INPUT');
+    }
+
+    const { groupBooking, shareUrl, expiresAt } = await createGroupBookingForShow({
+        organizerId: userId,
+        showId,
+        seatBlock: [seat],
+        expiresInHours,
+        organizerNote: message || '',
+        origin,
+    });
+
+    await inngest.send({
+        name: 'app/gift-ticket.sent',
+        data: {
+            groupBookingId: groupBooking._id.toString(),
+            recipientEmail: recipientEmail.trim().toLowerCase(),
+            claimUrl: shareUrl,
+            purchaserId: userId,
+            expiresAt: expiresAt.toISOString(),
+        },
+    });
+
+    req.log.info({ groupBookingId: groupBooking._id.toString(), showId, userId }, 'Ticket gifted, claim link emailed');
+    res.json({ success: true, groupId: groupBooking._id, shareUrl, expiresAt });
+});
+
+
 export const createGroupBooking = asyncHandler(async (req, res) => {
     const { userId } = req.auth();
     const { showId, seatBlock, expiresInHours, organizerNote } = req.body;
@@ -105,7 +143,7 @@ export const createGroupBooking = asyncHandler(async (req, res) => {
 export const claimGroupSeats = asyncHandler(async (req, res) => {
     const { userId } = req.auth();
     const { groupId } = req.params;
-    const { selectedSeats, snacks: requestedSnacks, redeemPoints, couponCode } = req.body;
+    const { selectedSeats, snacks: requestedSnacks, redeemPoints, couponCode, giftCardCode } = req.body;
     const { origin } = req.headers;
 
     if (!Array.isArray(selectedSeats) || selectedSeats.length === 0) {
@@ -150,6 +188,7 @@ export const claimGroupSeats = asyncHandler(async (req, res) => {
         couponCode,
         requestedSnacks,
         redeemPoints,
+        giftCardCode,
         origin,
         skipSeatLock: true,
         extraBookingFields: { groupBookingId: group._id, groupBookingSeats: selectedSeats },
@@ -280,13 +319,10 @@ export const cancelGroupBooking = asyncHandler(async (req, res) => {
             if (claimBooking.pointsRedeemed > 0) {
                 await refundRedeemedPoints(claim.userId, claim.bookingId.toString());
             }
+            if (claimBooking.giftCardAmountUsed > 0) {
+                await refundGiftCardAtomic(claimBooking.giftCardCode, claimBooking.giftCardAmountUsed);
+            }
         } catch (error) {
-            // Deliberate divergence from single-booking cancelBooking: we do NOT
-            // re-occupy this seat on refund failure. cancelBooking re-occupies to
-            // protect a single self-service user from losing seat + money at once.
-            // Here the ORGANIZER is authoritatively tearing down the whole event,
-            // so leaving the seat locked pending a Stripe retry would contradict
-            // that intent — flag for manual/finance reconciliation instead.
             req.log.error({ err: error, bookingId: claim.bookingId }, 'Refund failed for group claim, marking pending-cancellation');
             claimBooking.status = 'pending-cancellation';
             await claimBooking.save();
