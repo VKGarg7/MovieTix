@@ -12,8 +12,9 @@ import TopSellersCarousel from '../../components/admin/menu/TopSellersCarousel';
 import MenuFilterBar from '../../components/admin/menu/MenuFilterBar';
 import MenuItemCard from '../../components/admin/menu/MenuItemCard';
 import MenuEmptyState from '../../components/admin/menu/MenuEmptyState';
-import PremiumPagination from '../../components/admin/listshows/PremiumPagination';
+import PaginationShell from '../../components/admin/PaginationShell';
 import { guessCategory, getStockStatus } from '../../lib/menuItemStatus';
+import { downloadCsvRows } from '../../lib/downloadCsv';
 
 const emptyForm = {
   name: '', category: 'snacks', price: '', description: '', imageUrl: '',
@@ -159,14 +160,7 @@ const MenuItems = () => {
       ['Name', 'Price', 'Status', 'Theater'],
       ...filteredItems.map((i) => [i.name, i.price, i.isAvailable ? 'Available' : 'Unavailable', i.theaterId || '']),
     ];
-    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `menu-items-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvRows(rows, `menu-items-${new Date().toISOString().slice(0, 10)}.csv`);
     toast.success('CSV exported');
   };
 
@@ -235,7 +229,7 @@ const MenuItems = () => {
         <MenuAIInsights items={items} />
       </div>
 
-      <PremiumPagination
+      <PaginationShell
         page={page}
         totalPages={totalPages}
         onPageChange={setPage}

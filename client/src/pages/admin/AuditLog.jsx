@@ -16,8 +16,9 @@ import ActivityTimeline from '../../components/admin/auditlog/ActivityTimeline';
 import ActivitySkeleton from '../../components/admin/auditlog/ActivitySkeleton';
 import ActivityEmptyState from '../../components/admin/auditlog/ActivityEmptyState';
 import DiffDrawer from '../../components/admin/auditlog/DiffDrawer';
-import PremiumPagination from '../../components/admin/listshows/PremiumPagination';
+import PaginationShell from '../../components/admin/PaginationShell';
 import { matchesSearch, getEntitySummary, getActionMeta } from '../../lib/auditSummary';
+import { downloadCsvRows } from '../../lib/downloadCsv';
 
 const POLL_INTERVAL_MS = 30000;
 
@@ -123,14 +124,7 @@ const AuditLogInner = () => {
         getEntitySummary(e),
       ]),
     ];
-    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `activity-log-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvRows(rows, `activity-log-${new Date().toISOString().slice(0, 10)}.csv`);
     toast.success('CSV exported');
   };
 
@@ -182,7 +176,7 @@ const AuditLogInner = () => {
         </div>
       )}
 
-      <PremiumPagination
+      <PaginationShell
         page={page}
         totalPages={totalPages}
         onPageChange={setPage}

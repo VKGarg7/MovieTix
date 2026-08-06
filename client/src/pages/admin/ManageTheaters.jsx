@@ -17,6 +17,7 @@ import ViewFromSeatUploader from '../../components/admin/theaters/ViewFromSeatUp
 import ScreenSummaryStats from '../../components/admin/theaters/ScreenSummaryStats';
 import ExistingScreensList from '../../components/admin/theaters/ExistingScreensList';
 import { emptyRow } from '../../lib/seatLayoutBuilder';
+import { downloadCsvRows } from '../../lib/downloadCsv';
 
 const emptyTheaterForm = {
   name: '', city: '', address: '', contactEmail: '', timezone: 'Asia/Kolkata', lat: '', lng: '',
@@ -177,14 +178,7 @@ const ManageTheatersInner = () => {
       ['Name', 'City', 'Address', 'Email', 'Timezone', 'Active'],
       ...theaters.map((t) => [t.name, t.city, t.address, t.contactEmail, t.timezone, t.isActive !== false ? 'Active' : 'Inactive']),
     ];
-    const csv = rows2.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `theaters-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvRows(rows2, `theaters-${new Date().toISOString().slice(0, 10)}.csv`);
     toast.success('CSV exported');
   };
 

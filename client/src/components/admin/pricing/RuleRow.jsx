@@ -10,15 +10,9 @@ import { getRuleStatus, getRuleConditionPills, estimateMonthlyRevenueImpact, get
 import ActionIconButton from "../ActionIconButton";
 import DetailTile from "../DetailTile";
 import InsightPanel from "../InsightPanel";
+import { INSIGHT_TONE_CLASSES } from "../../../lib/insightTones";
 
 const TYPE_LABELS = { time_of_week: "Time-of-week", early_bird: "Early-bird" };
-
-const INSIGHT_TONE = {
-  primary: "bg-primary/10 border-primary/25 text-primary",
-  cyan: "bg-nebula-cyan/10 border-nebula-cyan/25 text-nebula-cyan",
-  violet: "bg-nebula-violet/10 border-nebula-violet/25 text-nebula-violet",
-  amber: "bg-nebula-amber/10 border-nebula-amber/25 text-nebula-amber",
-};
 
 const TIMELINE_EVENTS = (rule) => {
   const events = [{ label: "Created", date: rule.createdAt }];
@@ -165,7 +159,7 @@ const RuleRow = ({ rule, i, currency, theaterName, onEdit, onDuplicate, onToggle
                 <InsightPanel icon={SparklesIcon}>
                   <div className="flex flex-wrap items-start gap-2">
                     {insights.map((ins) => (
-                      <span key={ins.label} className={`px-2.5 py-1 rounded-full text-[10px] font-medium border ${INSIGHT_TONE[ins.tone]}`}>
+                      <span key={ins.label} className={`px-2.5 py-1 rounded-full text-[10px] font-medium border ${INSIGHT_TONE_CLASSES[ins.tone]}`}>
                         {ins.label}
                       </span>
                     ))}

@@ -13,7 +13,7 @@ import BookingKpiRow from '../../components/admin/listbookings/BookingKpiRow';
 import BookingFilterBar from '../../components/admin/listbookings/BookingFilterBar';
 import BookingRow from '../../components/admin/listbookings/BookingRow';
 import BookingEmptyState from '../../components/admin/listbookings/BookingEmptyState';
-import PremiumPagination from '../../components/admin/listshows/PremiumPagination';
+import PaginationShell from '../../components/admin/PaginationShell';
 import { getBookingStatus, getPaymentStatus } from '../../lib/bookingStatus';
 
 const DEFAULT_FILTERS = {
@@ -188,7 +188,7 @@ const ListBookings = () => {
         </div>
       )}
 
-      <PremiumPagination
+      <PaginationShell
         page={page}
         totalPages={totalPages}
         onPageChange={setPage}

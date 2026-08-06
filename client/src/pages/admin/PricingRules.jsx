@@ -11,8 +11,9 @@ import RuleFilterBar from '../../components/admin/pricing/RuleFilterBar';
 import RuleRow from '../../components/admin/pricing/RuleRow';
 import RuleEmptyState from '../../components/admin/pricing/RuleEmptyState';
 import SimulationPanel from '../../components/admin/pricing/SimulationPanel';
-import PremiumPagination from '../../components/admin/listshows/PremiumPagination';
+import PaginationShell from '../../components/admin/PaginationShell';
 import { getRuleStatus } from '../../lib/pricingRuleStatus';
+import { downloadCsvRows } from '../../lib/downloadCsv';
 
 const emptyForm = {
   name: '', type: 'time_of_week', adjustmentType: 'percentage', adjustmentPercent: '',
@@ -193,14 +194,7 @@ const PricingRules = () => {
       ['Name', 'Type', 'Adjustment %', 'Theater', 'Status', 'Created'],
       ...filteredRules.map((r) => [r.name, r.type, r.adjustmentPercent, r.theaterId || 'Global', getRuleStatus(r), new Date(r.createdAt).toISOString()]),
     ];
-    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pricing-rules-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvRows(rows, `pricing-rules-${new Date().toISOString().slice(0, 10)}.csv`);
     toast.success('CSV exported');
   };
 
@@ -279,7 +273,7 @@ const PricingRules = () => {
         </div>
       )}
 
-      <PremiumPagination
+      <PaginationShell
         page={page}
         totalPages={totalPages}
         onPageChange={setPage}
