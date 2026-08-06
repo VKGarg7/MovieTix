@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import Loading from "../components/Loading";
 import isoTimeFormat from "../lib/isoTimeFormat";
-import { ArrowRightIcon, ClockIcon, Users, Vote, EyeOffIcon, TrendingDownIcon } from "lucide-react";
+import { ArrowRightIcon, ClockIcon, Users, Vote, EyeOffIcon, TrendingDownIcon, GiftIcon } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { useAppContext } from "../context/useAppContext";
 import SeatGrid, { SeatTypeLegend } from "../components/SeatGrid";
@@ -457,6 +457,13 @@ const SeatLayout = () => {
           >
             <Vote className="w-3.5 h-3.5" />
             Poll friends on a time first
+          </button>
+          <button
+            onClick={() => navigate(`/movies/${id}/${date}/gift-ticket`)}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-primary border border-primary/40 rounded-full hover:bg-primary/10 cursor-pointer transition-colors"
+          >
+            <GiftIcon className="w-3.5 h-3.5" />
+            Gift a ticket instead
           </button>
         </div>
 

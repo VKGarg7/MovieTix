@@ -2,6 +2,7 @@ import Booking from '../models/Booking.js';
 import Follow from '../models/Follow.js';
 import Movie from '../models/Movie.js';
 import Show from '../models/Show.js';
+import EmotionalPulse from '../models/EmotionalPulse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { scoreCandidates, BOOKING_SIGNAL_WEIGHT, FOLLOW_SIGNAL_WEIGHT } from '../utils/recommendationEngine.js';
 import { getBookableMovieIds } from '../utils/showQueries.js';
@@ -35,7 +36,30 @@ export const getRecommendations = asyncHandler(async (req, res) => {
         ...followedMovies.map(movie => ({ movie, weight: FOLLOW_SIGNAL_WEIGHT })),
     ];
 
-    const { recommendations } = scoreCandidates(candidates, signals);
+    const [myPulses, candidateTagCounts] = await Promise.all([
+        EmotionalPulse.find({ userId }, { tag: 1 }),
+        candidateIds.length > 0
+            ? EmotionalPulse.aggregate([
+                { $match: { movieId: { $in: candidateIds } } },
+                { $group: { _id: { movieId: '$movieId', tag: '$tag' }, count: { $sum: 1 } } },
+            ])
+            : [],
+    ]);
+
+    const userTagWeight = new Map();
+    for (const pulse of myPulses) {
+        userTagWeight.set(pulse.tag, (userTagWeight.get(pulse.tag) || 0) + 1);
+    }
+
+    const candidateTagDistribution = new Map();
+    for (const { _id, count } of candidateTagCounts) {
+        if (!candidateTagDistribution.has(_id.movieId)) {
+            candidateTagDistribution.set(_id.movieId, new Map());
+        }
+        candidateTagDistribution.get(_id.movieId).set(_id.tag, count);
+    }
+
+    const { recommendations } = scoreCandidates(candidates, signals, { userTagWeight, candidateTagDistribution });
 
     res.json({
         success: true,

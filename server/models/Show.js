@@ -10,6 +10,12 @@ const showSchema = new mongoose.Schema(
         isCancelled: {type: Boolean, default: false},
         isMysteryMovie: {type: Boolean, default: false},
         mysteryRevealAt: {type: String, enum: ['onBooking', 'atTheater'], default: 'onBooking'},
+        // Present only for a Show born from an approved CommunityScreeningRequest
+        // (MT-804). Additive/optional by design — every existing consumer of Show
+        // (booking flow, browse filters, occupancy pulse, dashboard) has zero
+        // awareness of these fields and must keep working unmodified by omission.
+        communityHostId: {type: mongoose.Schema.Types.ObjectId, ref: 'CommunityHost', default: null},
+        revenueSplitPercent: {type: Number, min: 0, max: 100, default: null},
     } , {minimize: false}
 )
 

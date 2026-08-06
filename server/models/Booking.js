@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import crypto from "crypto";
 
 const bookingSchema = new mongoose.Schema({
     user: {type: String, required: true, ref: 'User'},
@@ -28,6 +29,12 @@ const bookingSchema = new mongoose.Schema({
     postCreditsAlertSent: {type: Boolean, default: false},
     bingePassCreditUsed: {type: Boolean, default: false},
     bingePassCreditAmount: {type: Number, default: 0},
+    giftCardCode: {type: String, default: null},
+    giftCardAmountUsed: {type: Number, default: 0},
+    ticketNonce: {type: String, default: () => crypto.randomBytes(9).toString('base64url')},
+    leaveNowReminderOptedIn: {type: Boolean, default: false},
+    leaveNowReminderScheduledAt: {type: Date, default: null},
+    leaveNowReminderSent: {type: Boolean, default: false},
 } , {timestamps: true});
 
 const Booking = mongoose.model('Booking', bookingSchema);

@@ -14,14 +14,17 @@ import { SignIn } from '@clerk/clerk-react'
 import Loading from './components/Loading'
 import BookingAssistant from './components/BookingAssistant'
 
-// Every routed page is code-split — the initial bundle only needs the app shell
-// (nav, footer, 3D universe, providers), not every page's chunk up front.
 const Home = lazy(() => import('./pages/Home'))
 const Movies = lazy(() => import('./pages/Movies'))
 const MovieDetails = lazy(() => import('./pages/MovieDetails'))
 const SeatLayout = lazy(() => import('./pages/SeatLayout'))
 const BookingFlow = lazy(() => import('./pages/booking/BookingFlow'))
 const GroupBookingCreate = lazy(() => import('./pages/GroupBookingCreate'))
+const GiftTicketCreate = lazy(() => import('./pages/GiftTicketCreate'))
+const GiftCardBuy = lazy(() => import('./pages/GiftCardBuy'))
+const GiftCardPurchased = lazy(() => import('./pages/GiftCardPurchased'))
+const TicketTransferClaim = lazy(() => import('./pages/TicketTransferClaim'))
+const TicketResaleBrowse = lazy(() => import('./pages/TicketResaleBrowse'))
 const GroupBookingClaim = lazy(() => import('./pages/GroupBookingClaim'))
 const GroupBookingManage = lazy(() => import('./pages/GroupBookingManage'))
 const ShowtimePollCreate = lazy(() => import('./pages/ShowtimePollCreate'))
@@ -29,6 +32,7 @@ const ShowtimePollVote = lazy(() => import('./pages/ShowtimePollVote'))
 const ShowtimePollManage = lazy(() => import('./pages/ShowtimePollManage'))
 const WaitlistClaim = lazy(() => import('./pages/WaitlistClaim'))
 const MyBookings = lazy(() => import('./pages/MyBookings'))
+const Wrapped = lazy(() => import('./pages/Wrapped'))
 const Account = lazy(() => import('./pages/Account'))
 const Favourite = lazy(() => import('./pages/Favourite'))
 const Theaters = lazy(() => import('./pages/Theaters'))
@@ -45,6 +49,11 @@ const VerifyPickup = lazy(() => import('./pages/admin/VerifyPickup'))
 const ManageTheaters = lazy(() => import('./pages/admin/ManageTheaters'))
 const AuditLog = lazy(() => import('./pages/admin/AuditLog'))
 const MultiplexPulse = lazy(() => import('./pages/admin/MultiplexPulse'))
+const OpenScreen = lazy(() => import('./pages/admin/OpenScreen'))
+const CommunityHosts = lazy(() => import('./pages/admin/CommunityHosts'))
+const CommunityScreeningBrowse = lazy(() => import('./pages/CommunityScreeningBrowse'))
+const CommunityHostApply = lazy(() => import('./pages/CommunityHostApply'))
+const CommunityMyRequests = lazy(() => import('./pages/CommunityMyRequests'))
 
 const App = () => {
 
@@ -78,6 +87,11 @@ const App = () => {
         <Route path='/book/:movieId' element={<BookingFlow/>} />
         <Route path='/movies/:id/:date' element={<SeatLayout/>} />
         <Route path='/movies/:id/:date/group-booking' element={<GroupBookingCreate/>} />
+        <Route path='/movies/:id/:date/gift-ticket' element={<GiftTicketCreate/>} />
+        <Route path='/gift-card/buy' element={<GiftCardBuy/>} />
+        <Route path='/gift-card/purchased' element={<GiftCardPurchased/>} />
+        <Route path='/ticket-transfer/:transferId/claim' element={<TicketTransferClaim/>} />
+        <Route path='/resale' element={<TicketResaleBrowse/>} />
         <Route path='/group-booking/:groupId' element={<GroupBookingClaim/>} />
         <Route path='/group-booking/:groupId/manage' element={<GroupBookingManage/>} />
         <Route path='/movies/:id/showtime-poll' element={<ShowtimePollCreate/>} />
@@ -85,8 +99,13 @@ const App = () => {
         <Route path='/showtime-poll/:pollId/manage' element={<ShowtimePollManage/>} />
         <Route path='/waitlist/:entryId/claim' element={<WaitlistClaim/>} />
         <Route path='/my-bookings' element={<MyBookings/>} />
+        <Route path='/wrapped' element={<Wrapped/>} />
         <Route path='/account' element={<Account/>} />
         <Route path='/loading/:nextUrl' element={<Loading/>} />
+
+        <Route path='/community/screenings' element={<CommunityScreeningBrowse/>} />
+        <Route path='/community/apply' element={<CommunityHostApply/>} />
+        <Route path='/community/my-requests' element={<CommunityMyRequests/>} />
 
         <Route path='/favourite' element={<Favourite/>} />
         <Route path='/theaters' element={<Theaters/>} />
@@ -108,6 +127,8 @@ const App = () => {
           <Route path='manage-theaters' element={<ManageTheaters/>}/>
           <Route path='audit-log' element={<AuditLog/>}/>
           <Route path='multiplex-pulse' element={<MultiplexPulse/>}/>
+          <Route path='open-screen' element={<OpenScreen/>}/>
+          <Route path='community-hosts' element={<CommunityHosts/>}/>
         </Route>
 
       </Routes>

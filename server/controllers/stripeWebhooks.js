@@ -1,10 +1,13 @@
 import stripe from 'stripe';
+import crypto from 'crypto';
 import Booking from '../models/Booking.js';
 import Subscription from '../models/Subscription.js';
+import TicketTransfer from '../models/TicketTransfer.js';
 import {inngest} from '../inngest/index.js';
 import { awardPoints } from '../utils/loyaltyPoints.js';
 import { grantReferralRewardIfEligible } from '../utils/referrals.js';
 import { updateClaimsForSeats } from '../utils/groupBookingClaims.js';
+import { createGiftCardWithUniqueCode } from '../utils/giftCardPricing.js';
 
 const BINGE_PASS_CREDITS_PER_CYCLE = 4;
 
@@ -100,6 +103,55 @@ export const stripeWebhooks = async (request , response) => {
 
                 if (session.mode === 'subscription') {
                     await handleSubscriptionCheckoutCompleted(session);
+                    break;
+                }
+
+                if (session.metadata?.mode === 'gift_card') {
+                    const { giftCardId } = session.metadata;
+                    await inngest.send({ name: 'app/gift-card.purchased', data: { giftCardId } });
+                    log.info({ giftCardId }, 'Gift card paid, dispatched for delivery');
+                    break;
+                }
+
+                if (session.metadata?.mode === 'ticket_resale') {
+                    const { transferId } = session.metadata;
+
+                    const transfer = await TicketTransfer.findById(transferId);
+                    if (!transfer || transfer.status !== 'claimed') {
+                        log.error({ transferId }, 'Resale payment completed but transfer is not in claimed state');
+                        break;
+                    }
+
+                    const booking = await Booking.findById(transfer.booking);
+                    if (!booking) {
+                        log.error({ transferId, bookingId: transfer.booking }, 'Resale payment completed but booking is missing');
+                        break;
+                    }
+
+                    booking.user = transfer.claimedBy;
+                    booking.ticketNonce = crypto.randomBytes(9).toString('base64url');
+                    await booking.save();
+
+                    const payoutExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+                    const payoutGiftCard = await createGiftCardWithUniqueCode({
+                        purchaserId: transfer.sellerId,
+                        recipientEmail: null,
+                        message: 'Resale payout',
+                        initialBalance: transfer.resalePrice,
+                        balance: transfer.resalePrice,
+                        expiryDate: payoutExpiry,
+                    });
+
+                    await inngest.send({
+                        name: 'app/ticket-transfer.resale-completed',
+                        data: {
+                            transferId: transfer._id.toString(),
+                            bookingId: booking._id.toString(),
+                            payoutGiftCardCode: payoutGiftCard.code,
+                        },
+                    });
+
+                    log.info({ transferId, bookingId: booking._id.toString() }, 'Resale completed, ticket reassigned and seller paid out');
                     break;
                 }
 

@@ -1,5 +1,5 @@
 import express from 'express';
-import { followMovie, getFavorites, getFollowedMovies, getFollowStatus, getUserBookings, unfollowMovie, updateFavorite, getPointsSummary, getPointsHistory, getReferralInfo } from '../controllers/userController.js';
+import { followMovie, getFavorites, getFollowedMovies, getFollowStatus, getUserBookings, unfollowMovie, updateFavorite, getPointsSummary, getPointsHistory, getReferralInfo, getWrapped } from '../controllers/userController.js';
 import { protectUser } from '../middleware/auth.js';
 
 const userRouter = express.Router();
@@ -296,5 +296,37 @@ userRouter.get('/points/history', protectUser, getPointsHistory);
  *         $ref: '#/components/responses/ServerError'
  */
 userRouter.get('/referral', protectUser, getReferralInfo);
+
+/**
+ * @openapi
+ * /user/wrapped:
+ *   get:
+ *     summary: Get the authenticated user's personal movie-going recap
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: signed-in user. Derived entirely from paid, non-cancelled bookings. Returns hasEnoughHistory: false with too little booking history to build a meaningful recap."
+ *     responses:
+ *       200:
+ *         description: Wrapped recap stats
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               hasEnoughHistory: true
+ *               totalBookings: 12
+ *               totalSeats: 22
+ *               totalSpent: 6400
+ *               favoriteGenre: "Action"
+ *               favoriteRow: "C"
+ *               mostVisitedTheater: { name: "PVR Central", city: "Mumbai", visits: 5 }
+ *               longestMovie: { title: "Oppenheimer", runtime: 180, poster_path: "/x.jpg" }
+ *               spendPercentile: 92
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+userRouter.get('/wrapped', protectUser, getWrapped);
 
 export default userRouter;

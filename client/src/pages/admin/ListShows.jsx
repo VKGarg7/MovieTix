@@ -14,7 +14,7 @@ import BulkActionsBar from '../../components/admin/listshows/BulkActionsBar';
 import PaginationShell from '../../components/admin/PaginationShell';
 import EditShowModal from '../../components/admin/listshows/EditShowModal';
 import { getShowStatus } from '../../lib/showStatus';
-import { downloadCsvRows } from '../../lib/downloadCsv';
+import { downloadCsvRows, downloadCsvBlob } from '../../lib/downloadCsv';
 
 const DEFAULT_FILTERS = {
   movieQuery: '', theaterQuery: '', status: 'all', date: '', language: 'all', genre: 'all', sort: 'time-asc',
@@ -190,6 +190,18 @@ const ListShows = () => {
 
   const handleAnalytics = () => navigate('/admin/dashboard');
 
+  const handleExportTrailerVote = async (show) => {
+    try {
+      const response = await axios.get(`/api/trailer-vote/${show._id}/export`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+        responseType: 'blob',
+      });
+      downloadCsvBlob(response.data, `trailer-vote-${show._id}.csv`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'No trailer vote has been started for this show yet');
+    }
+  };
+
   const handleExportCsv = () => {
     const rows = [
       ['Movie', 'Theater', 'Screen', 'Show Time', 'Status', 'Occupied', 'Capacity', 'Revenue'],
@@ -272,6 +284,7 @@ const ListShows = () => {
                 onDelete={handleDelete}
                 onDuplicate={handleDuplicate}
                 onAnalytics={handleAnalytics}
+                onExportTrailerVote={handleExportTrailerVote}
                 savingId={savingId}
               />
             ))}

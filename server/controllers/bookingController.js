@@ -18,6 +18,8 @@ import { redeemCouponAtomic, releaseCouponAtomic } from './couponController.js';
 import { computeDiscount } from '../utils/couponPricing.js';
 import { fetchApplicableRules, computeShowPrice } from '../utils/dynamicPricing.js';
 import { redeemPointsAtomic, refundRedeemedPoints, reverseEarnedPoints } from '../utils/loyaltyPoints.js';
+import { redeemGiftCardAtomic, refundGiftCardAtomic } from '../utils/giftCardPricing.js';
+import TicketTransfer from '../models/TicketTransfer.js';
 import { isMysteryRevealed } from '../utils/mysteryMovie.js';
 import { redeemBingePassCredit, refundBingePassCredit } from './subscriptionController.js';
 import { isShowBingePassEligible } from '../utils/bingePassEligibility.js';
@@ -60,7 +62,7 @@ export const MAX_SEATS_PER_BOOKING = 5;
 
 export const runBookingCheckout = async ({
     userId, showId, selectedSeats, couponCode, requestedSnacks, redeemPoints, origin,
-    skipSeatLock = false, extraBookingFields = {}, onSeatRollback, useBingePassCredit = false,
+    skipSeatLock = false, extraBookingFields = {}, onSeatRollback, useBingePassCredit = false, giftCardCode,
 }) => {
     const rollbackSeats = onSeatRollback || (seats => releaseSeatsAndNotifyWaitlist(showId, seats));
 
@@ -144,7 +146,6 @@ export const runBookingCheckout = async ({
         throw error;
     }
 
-    // --- Binge Pass credit redemption ---
     if (useBingePassCredit) {
         try {
             const showEligible = await isShowBingePassEligible(showData, theaterId, theaterTimezone);
@@ -224,9 +225,34 @@ export const runBookingCheckout = async ({
         await booking.save();
     }
 
-    // If the Binge Pass credit fully covers the ticket and there are no snacks,
-    // the booking is free — mark it paid immediately without a Stripe session.
-    if (useBingePassCredit && finalAmount <= 0 && snacksAmount === 0) {
+    let giftCardAmountUsed = 0;
+    let redeemedGiftCardCode = null;
+    if (giftCardCode && finalAmount > 0) {
+        try {
+            const result = await redeemGiftCardAtomic(giftCardCode, finalAmount, userId);
+            redeemedGiftCardCode = result.code;
+            giftCardAmountUsed = result.amountUsed;
+        } catch (error) {
+            await rollbackSeats(selectedSeats);
+            if (redeemedCoupon) {
+                await releaseCouponAtomic(redeemedCoupon.code);
+            }
+            if (pointsDiscountAmount > 0) {
+                await refundRedeemedPoints(userId, booking._id.toString());
+            }
+            await Booking.findByIdAndDelete(booking._id);
+            throw error;
+        }
+
+        finalAmount -= giftCardAmountUsed;
+
+        booking.giftCardCode = redeemedGiftCardCode;
+        booking.giftCardAmountUsed = giftCardAmountUsed;
+        booking.amount = finalAmount + snacksAmount;
+        await booking.save();
+    }
+
+    if ((useBingePassCredit || giftCardAmountUsed > 0) && finalAmount <= 0 && snacksAmount === 0) {
         booking.isPaid = true;
         booking.status = 'confirmed';
         booking.paymentLink = "";
@@ -307,6 +333,9 @@ export const runBookingCheckout = async ({
         if (bingePassUsage) {
             await refundBingePassCredit({ userId, bookingId: booking._id });
         }
+        if (giftCardAmountUsed > 0) {
+            await refundGiftCardAtomic(redeemedGiftCardCode, giftCardAmountUsed);
+        }
         await Booking.findByIdAndDelete(booking._id);
         throw error;
     }
@@ -314,7 +343,7 @@ export const runBookingCheckout = async ({
 
 export const createBooking = asyncHandler(async(req , res)=> {
     const {userId} = req.auth();
-    const {showId , selectedSeats, couponCode, snacks: requestedSnacks, redeemPoints, useBingePassCredit} = req.body;
+    const {showId , selectedSeats, couponCode, snacks: requestedSnacks, redeemPoints, useBingePassCredit, giftCardCode} = req.body;
     const {origin} =  req.headers;
 
     if (!showId || !Array.isArray(selectedSeats) || selectedSeats.length === 0) {
@@ -331,7 +360,7 @@ export const createBooking = asyncHandler(async(req , res)=> {
     }
 
     const { booking, session } = await runBookingCheckout({
-        userId, showId, selectedSeats, couponCode, requestedSnacks, redeemPoints, origin, useBingePassCredit,
+        userId, showId, selectedSeats, couponCode, requestedSnacks, redeemPoints, origin, useBingePassCredit, giftCardCode,
     });
 
     req.log.info({ bookingId: booking._id.toString(), showId, userId }, 'Booking created, checkout session started');
@@ -358,7 +387,7 @@ export const getBookingPickupQr = asyncHandler(async(req, res) => {
         throw new AppError('This booking has no concession pre-order', 400, 'NO_SNACKS_ORDERED');
     }
 
-    const qrPng = await buildPickupQrPng(booking._id.toString());
+    const qrPng = await buildPickupQrPng(booking._id.toString(), booking.ticketNonce);
 
     res.set({
         'Content-Type': 'image/png',
@@ -371,17 +400,20 @@ export const getBookingPickupQr = asyncHandler(async(req, res) => {
 export const verifyBookingPickup = asyncHandler(async(req, res) => {
     const { token } = req.body;
 
-    const bookingId = verifyPickupToken(token);
-    if (!bookingId) {
+    const verified = verifyPickupToken(token);
+    if (!verified) {
         throw new AppError('Invalid or tampered pickup code', 400, 'INVALID_PICKUP_TOKEN');
     }
 
-    const booking = await Booking.findById(bookingId).populate('user').populate({
+    const booking = await Booking.findById(verified.bookingId).populate('user').populate({
         path: 'show',
         populate: [{ path: 'movie' }, SCREEN_WITH_THEATER],
     });
     if (!booking) {
         throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
+    }
+    if (booking.ticketNonce !== verified.ticketNonce) {
+        throw new AppError('This pickup code has been invalidated (ticket was transferred)', 400, 'INVALID_PICKUP_TOKEN');
     }
 
     assertScreenBelongsToTheater(booking.show?.screen, req.adminContext);
@@ -408,7 +440,7 @@ export const verifyBookingPickup = asyncHandler(async(req, res) => {
     };
 
     const updated = await Booking.findOneAndUpdate(
-        { _id: bookingId, concessionPickedUp: false },
+        { _id: verified.bookingId, concessionPickedUp: false },
         { $set: { concessionPickedUp: true } },
         { new: true }
     );
@@ -417,7 +449,7 @@ export const verifyBookingPickup = asyncHandler(async(req, res) => {
         throw new AppError('Concession order has already been picked up', 409, 'ALREADY_PICKED_UP');
     }
 
-    req.log.info({ bookingId }, 'Concession order picked up');
+    req.log.info({ bookingId: verified.bookingId }, 'Concession order picked up');
     res.json({ success: true, message: 'Pickup confirmed', snacks: updated.snacks, order: orderSummary });
 });
 
@@ -487,6 +519,10 @@ export const cancelBooking = asyncHandler(async(req, res) => {
     }
 
     await releaseSeatsAndNotifyWaitlist(booking.show, booking.bookedSeats);
+    await TicketTransfer.updateMany(
+        { booking: booking._id, status: 'pending' },
+        { $set: { status: 'cancelled' } }
+    );
 
     try {
         if (booking.paymentIntentId) {
@@ -507,6 +543,9 @@ export const cancelBooking = asyncHandler(async(req, res) => {
         }
         if (booking.bingePassCreditUsed) {
             await refundBingePassCredit({ userId, bookingId });
+        }
+        if (booking.giftCardAmountUsed > 0) {
+            await refundGiftCardAtomic(booking.giftCardCode, booking.giftCardAmountUsed);
         }
 
         req.log.info({ bookingId, userId }, 'Booking cancelled and refunded');

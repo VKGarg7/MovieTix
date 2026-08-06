@@ -10,6 +10,10 @@ const MetaChip = ({ icon: Icon, children, i = 0, tone = "default" }) => (
     className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs border backdrop-blur-xl transition-colors ${
       tone === "amber"
         ? "border-nebula-amber/30 bg-nebula-amber/10 text-nebula-amber"
+        : tone === "cyan"
+        ? "border-nebula-cyan/30 bg-nebula-cyan/10 text-nebula-cyan"
+        : tone === "violet"
+        ? "border-nebula-violet/30 bg-nebula-violet/10 text-nebula-violet"
         : "border-white/10 bg-white/[0.05] text-gray-300"
     }`}
   >
