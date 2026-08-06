@@ -11,9 +11,10 @@ import ShowFilterBar from '../../components/admin/listshows/ShowFilterBar';
 import ShowRow from '../../components/admin/listshows/ShowRow';
 import ShowEmptyState from '../../components/admin/listshows/ShowEmptyState';
 import BulkActionsBar from '../../components/admin/listshows/BulkActionsBar';
-import PremiumPagination from '../../components/admin/listshows/PremiumPagination';
+import PaginationShell from '../../components/admin/PaginationShell';
 import EditShowModal from '../../components/admin/listshows/EditShowModal';
 import { getShowStatus } from '../../lib/showStatus';
+import { downloadCsvRows } from '../../lib/downloadCsv';
 
 const DEFAULT_FILTERS = {
   movieQuery: '', theaterQuery: '', status: 'all', date: '', language: 'all', genre: 'all', sort: 'time-asc',
@@ -203,14 +204,7 @@ const ListShows = () => {
         Object.keys(s.occupiedSeats || {}).length * s.showPrice,
       ]),
     ];
-    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `shows-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvRows(rows, `shows-${new Date().toISOString().slice(0, 10)}.csv`);
     toast.success('CSV exported');
   };
 
@@ -285,7 +279,7 @@ const ListShows = () => {
         </div>
       )}
 
-      <PremiumPagination
+      <PaginationShell
         page={page}
         totalPages={totalPages}
         onPageChange={setPage}

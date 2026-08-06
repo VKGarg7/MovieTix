@@ -10,8 +10,9 @@ import CreateCouponPanel from '../../components/admin/coupons/CreateCouponPanel'
 import CouponFilterBar from '../../components/admin/coupons/CouponFilterBar';
 import CouponRow from '../../components/admin/coupons/CouponRow';
 import CouponEmptyState from '../../components/admin/coupons/CouponEmptyState';
-import PremiumPagination from '../../components/admin/listshows/PremiumPagination';
+import PaginationShell from '../../components/admin/PaginationShell';
 import { getCouponStatus } from '../../lib/couponStatus';
+import { downloadCsvRows } from '../../lib/downloadCsv';
 
 const emptyForm = {
   code: '', type: 'percent', value: '', maxDiscount: '', minAmount: '',
@@ -156,14 +157,7 @@ const Coupons = () => {
       ['Code', 'Type', 'Value', 'Expiry', 'Used', 'Limit', 'Status'],
       ...filteredCoupons.map((c) => [c.code, c.type, c.value, new Date(c.expiryDate).toISOString(), c.usedCount, c.usageLimit, getCouponStatus(c)]),
     ];
-    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `coupons-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvRows(rows, `coupons-${new Date().toISOString().slice(0, 10)}.csv`);
     toast.success('CSV exported');
   };
 
@@ -228,7 +222,7 @@ const Coupons = () => {
         </div>
       )}
 
-      <PremiumPagination
+      <PaginationShell
         page={page}
         totalPages={totalPages}
         onPageChange={setPage}

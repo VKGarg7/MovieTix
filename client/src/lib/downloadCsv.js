@@ -8,3 +8,9 @@ export const downloadCsvBlob = (blob, filename) => {
   link.remove();
   window.URL.revokeObjectURL(url);
 };
+
+export const downloadCsvRows = (rows, filename) => {
+  const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  downloadCsvBlob(blob, filename);
+};

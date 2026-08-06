@@ -18,6 +18,7 @@ import LiveActivitySidebar from "../../components/admin/pulse/LiveActivitySideba
 import OperationsAIAlerts from "../../components/admin/pulse/OperationsAIAlerts";
 import UpcomingTimeline from "../../components/admin/pulse/UpcomingTimeline";
 import { getLiveStatus, occupancyTier } from "../../lib/pulseStatus";
+import { downloadCsvRows } from "../../lib/downloadCsv";
 
 const POLL_INTERVAL_MS = 60000;
 
@@ -131,14 +132,7 @@ const MultiplexPulse = () => {
       ["Movie", "Screen", "Theater", "Show Time", "Occupied", "Capacity", "Occupancy %", "Revenue"],
       ...filteredShows.map((s) => [s.title, s.screenName, s.theaterName || "", s.showDateTime, s.occupiedCount, s.totalCapacity ?? "", s.occupancyPct ?? "", Math.round(s.revenue || 0)]),
     ];
-    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `multiplex-pulse-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvRows(rows, `multiplex-pulse-${new Date().toISOString().slice(0, 10)}.csv`);
     toast.success("CSV exported");
   };
 
