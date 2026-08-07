@@ -51,6 +51,10 @@ app.use(express.json());
 app.use(cors({ origin: allowedOrigins }));
 app.use(clerkMiddleware())
 
+app.use('/api', (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+});
 
 app.get('/', (req, res) => res.send('Server is Live!'))
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec))
