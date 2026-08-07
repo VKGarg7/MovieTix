@@ -9,18 +9,20 @@ import sendEmail from '../configs/nodeMailer.js';
 import { inngest } from '../inngest/index.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
-import { assertScreenBelongsToTheater, hasPaidBookings } from '../utils/theaterScope.js';
+import { assertScreenBelongsToTheater, hasPaidBookings, SCREEN_WITH_THEATER } from '../utils/theaterScope.js';
 import { releaseSeatsAndNotifyWaitlist, getSeatCapacityInfo } from '../utils/seatOperations.js';
 import { renderEmail, highlight } from '../utils/emailTemplate.js';
 import tmdb from '../utils/tmdbClient.js';
-import { bookableShowFilter, getBookableMovieIds } from '../utils/showQueries.js';
+import { getBookableMovieIds, getOrderedBookableMovieIds } from '../utils/showQueries.js';
 import { getGenreNames } from '../utils/movieGenres.js';
+import { ACCOMMODATION_VALUES } from '../utils/accommodations.js';
 import { fetchApplicableRules, computeShowPrice } from '../utils/dynamicPricing.js';
 import { getShowtimeSuggestions } from '../utils/showtimeSuggestions.js';
 import { recordAudit } from '../utils/auditLog.js';
-import { maskMovieForMystery } from '../utils/mysteryMovie.js';
+import { maskMovieForMystery, isMysteryRevealed } from '../utils/mysteryMovie.js';
 import Review from '../models/Review.js';
 import { computeDivergenceBadge } from '../utils/divergenceBadge.js';
+import { qualifiesForFlashSeats, FLASH_SEATS_WINDOW_HOURS } from '../utils/flashSeats.js';
 
 
 export const getNowPlayingMovies = asyncHandler(async (req, res) => {
@@ -111,8 +113,42 @@ export const getSimilarMovies = asyncHandler(async (req, res) => {
 
 const MYSTERY_REVEAL_VALUES = ['onBooking', 'atTheater'];
 
+const validateAccommodations = (accommodations) => {
+    if (accommodations === undefined) return [];
+    if (!Array.isArray(accommodations) || !accommodations.every(a => ACCOMMODATION_VALUES.includes(a))) {
+        throw new AppError(`accommodations must be an array of: ${ACCOMMODATION_VALUES.join(', ')}`, 400, 'INVALID_INPUT');
+    }
+    return accommodations;
+};
+
+const validateLiveEventFields = ({ isLiveEvent, liveEventId, simulcastStartTime, combinedRuntimeMinutes }) => {
+    if (!isLiveEvent) return { liveEventId: null, simulcastStartTime: null, combinedRuntimeMinutes: null };
+
+    if (liveEventId !== undefined && !mongoose.Types.ObjectId.isValid(liveEventId)) {
+        throw new AppError('liveEventId must be a valid id', 400, 'INVALID_INPUT');
+    }
+    const resolvedLiveEventId = liveEventId || new mongoose.Types.ObjectId().toString();
+
+    const parsedSimulcastStart = new Date(simulcastStartTime);
+    if (!simulcastStartTime || Number.isNaN(parsedSimulcastStart.getTime())) {
+        throw new AppError('simulcastStartTime is required for a live event and must be a valid date', 400, 'INVALID_INPUT');
+    }
+    if (combinedRuntimeMinutes !== undefined && (!Number.isFinite(combinedRuntimeMinutes) || combinedRuntimeMinutes <= 0)) {
+        throw new AppError('combinedRuntimeMinutes must be a positive number', 400, 'INVALID_INPUT');
+    }
+
+    return {
+        liveEventId: resolvedLiveEventId,
+        simulcastStartTime: parsedSimulcastStart,
+        combinedRuntimeMinutes: combinedRuntimeMinutes || null,
+    };
+};
+
 export const addShow = asyncHandler(async (req, res) => {
-    const { movieId, screenId, showsInput, showPrice, isMysteryMovie, mysteryRevealAt } = req.body;
+    const {
+        movieId, screenId, showsInput, showPrice, isMysteryMovie, mysteryRevealAt, isRelaxedScreening, accommodations,
+        isLiveEvent, liveEventId, simulcastStartTime, combinedRuntimeMinutes,
+    } = req.body;
 
     if (!movieId || !screenId || !Array.isArray(showsInput) || showsInput.length === 0) {
         throw new AppError('movieId, screenId and showsInput are required', 400, 'INVALID_INPUT');
@@ -123,6 +159,8 @@ export const addShow = asyncHandler(async (req, res) => {
     if (mysteryRevealAt !== undefined && !MYSTERY_REVEAL_VALUES.includes(mysteryRevealAt)) {
         throw new AppError(`mysteryRevealAt must be one of: ${MYSTERY_REVEAL_VALUES.join(', ')}`, 400, 'INVALID_INPUT');
     }
+    const validAccommodations = validateAccommodations(accommodations);
+    const liveEventFields = validateLiveEventFields({ isLiveEvent, liveEventId, simulcastStartTime, combinedRuntimeMinutes });
 
     const screen = await Screen.findById(screenId).populate('theater');
     if (!screen) {
@@ -196,6 +234,10 @@ export const addShow = asyncHandler(async (req, res) => {
                 occupiedSeats: {},
                 isMysteryMovie: Boolean(isMysteryMovie),
                 mysteryRevealAt: mysteryRevealAt || 'onBooking',
+                isRelaxedScreening: Boolean(isRelaxedScreening),
+                accommodations: validAccommodations,
+                isLiveEvent: Boolean(isLiveEvent),
+                ...liveEventFields,
             });
         });
     });
@@ -232,7 +274,11 @@ export const addShow = asyncHandler(async (req, res) => {
     }
 
     req.log.info({ movieId, showsCreated: showsToCreate.length }, 'Show added');
-    res.json({ success: true, message: 'Show Added successfully.' });
+    res.json({
+        success: true,
+        message: 'Show Added successfully.',
+        liveEventId: liveEventFields.liveEventId || undefined,
+    });
 });
 
 
@@ -298,34 +344,19 @@ export const getShows = asyncHandler(async (req, res) => {
         throw new AppError('Invalid theaterId', 400, 'INVALID_INPUT');
     }
 
-    const pipeline = [
-        { $match: bookableShowFilter() },
-    ];
-
-    if (theaterId) {
-        pipeline.push(
-            { $lookup: { from: 'screens', localField: 'screen', foreignField: '_id', as: 'screen' } },
-            { $unwind: '$screen' },
-            { $match: { 'screen.theater': new mongoose.Types.ObjectId(theaterId) } }
-        );
-    }
-
-    pipeline.push(
-        { $group: { _id: '$movie', earliestShow: { $min: '$showDateTime' }, allMysteryUnrevealed: { $min: '$isMysteryMovie' } } },
-        { $sort: { earliestShow: 1 } }
-    );
-
-    const movieOrder = await Show.aggregate(pipeline);
+    const movieOrder = await getOrderedBookableMovieIds(theaterId);
 
     const movies = await Movie.find({ _id: { $in: movieOrder.map(m => m._id) } });
     const movieById = new Map(movies.map(movie => [movie._id.toString(), movie]));
     const reviewStatsByMovie = await getReviewStatsByMovie(movies.map(m => m._id));
 
     const orderedMovies = movieOrder
-        .map(({ _id, allMysteryUnrevealed }) => {
+        .map(({ _id, allMysteryUnrevealed, hasRelaxedScreening }) => {
             const movie = movieById.get(_id.toString());
             if (!movie) return null;
-            return allMysteryUnrevealed ? maskMovieForMystery(movie) : withDivergenceBadge(movie, reviewStatsByMovie);
+            const withBadges = allMysteryUnrevealed ? maskMovieForMystery(movie) : withDivergenceBadge(movie, reviewStatsByMovie);
+            const plainMovie = withBadges.toObject ? withBadges.toObject() : withBadges;
+            return { ...plainMovie, hasRelaxedScreening: Boolean(hasRelaxedScreening) };
         })
         .filter(Boolean);
 
@@ -377,6 +408,7 @@ export const getShow = asyncHandler(async (req, res) => {
         const computedPrice = computeShowPrice(show.showPrice, rules, {
             showDateTime: show.showDateTime,
             timezone: show.screen.theater.timezone,
+            showId: show._id.toString(),
         });
 
         const date = show.showDateTime.toISOString().split("T")[0];
@@ -398,6 +430,11 @@ export const getShow = asyncHandler(async (req, res) => {
             isSoldOut,
             isMysteryMovie: show.isMysteryMovie,
             mysteryRevealAt: show.mysteryRevealAt,
+            isRelaxedScreening: show.isRelaxedScreening,
+            accommodations: show.accommodations || [],
+            isLiveEvent: show.isLiveEvent,
+            simulcastStartTime: show.simulcastStartTime,
+            combinedRuntimeMinutes: show.combinedRuntimeMinutes,
         })
     }
 
@@ -410,6 +447,71 @@ export const getShow = asyncHandler(async (req, res) => {
     }
 
     res.json({ success: true, movie: responseMovie, dateTime })
+});
+
+
+export const getFlashSeats = asyncHandler(async (req, res) => {
+    const { theaterId } = req.query;
+
+    if (theaterId && !mongoose.Types.ObjectId.isValid(theaterId)) {
+        throw new AppError('Invalid theaterId', 400, 'INVALID_INPUT');
+    }
+
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + FLASH_SEATS_WINDOW_HOURS * 60 * 60 * 1000);
+
+    const filter = {
+        showDateTime: { $gt: now, $lte: windowEnd },
+        isCancelled: { $ne: true },
+    };
+    if (theaterId) filter['screen'] = { $in: await Screen.distinct('_id', { theater: theaterId }) };
+
+    const shows = await Show.find(filter).populate(SCREEN_WITH_THEATER).populate('movie');
+
+    const qualifyingShows = shows.filter(show => qualifiesForFlashSeats(show, now));
+    if (qualifyingShows.length === 0) {
+        return res.json({ success: true, shows: [] });
+    }
+
+    const rulesByTheater = new Map();
+    const getRulesFor = async (tId) => {
+        const key = tId.toString();
+        if (!rulesByTheater.has(key)) {
+            rulesByTheater.set(key, await fetchApplicableRules(tId));
+        }
+        return rulesByTheater.get(key);
+    };
+
+    const results = [];
+    for (const show of qualifyingShows) {
+        const rules = await getRulesFor(show.screen.theater._id);
+        const computedPrice = computeShowPrice(show.showPrice, rules, {
+            showDateTime: show.showDateTime,
+            timezone: show.screen.theater.timezone,
+            showId: show._id.toString(),
+        });
+        if (computedPrice >= show.showPrice) continue; 
+
+        const { occupiedCount, totalCapacity } = getSeatCapacityInfo(show);
+        const revealed = isMysteryRevealed(show, { isPaid: false });
+
+        results.push({
+            showId: show._id,
+            showDateTime: show.showDateTime,
+            theater: { _id: show.screen.theater._id, name: show.screen.theater.name, city: show.screen.theater.city },
+            screen: { name: show.screen.name },
+            movie: revealed ? show.movie : maskMovieForMystery(show.movie),
+            isMysteryMovie: show.isMysteryMovie,
+            showPrice: show.showPrice,
+            computedPrice,
+            occupiedCount,
+            totalCapacity,
+        });
+    }
+
+    results.sort((a, b) => new Date(a.showDateTime) - new Date(b.showDateTime));
+
+    res.json({ success: true, shows: results });
 });
 
 
@@ -555,9 +657,14 @@ const invalidatePendingBookings = async (show, movieTitle) => {
 
 export const editShow = asyncHandler(async (req, res) => {
     const { showId } = req.params;
-    const { showDateTime, showPrice, isMysteryMovie, mysteryRevealAt } = req.body;
+    const {
+        showDateTime, showPrice, isMysteryMovie, mysteryRevealAt, isRelaxedScreening, accommodations,
+        simulcastStartTime, combinedRuntimeMinutes,
+    } = req.body;
 
-    if (showDateTime === undefined && showPrice === undefined && isMysteryMovie === undefined && mysteryRevealAt === undefined) {
+    if (showDateTime === undefined && showPrice === undefined && isMysteryMovie === undefined && mysteryRevealAt === undefined
+        && isRelaxedScreening === undefined && accommodations === undefined
+        && simulcastStartTime === undefined && combinedRuntimeMinutes === undefined) {
         throw new AppError('At least one field to update is required', 400, 'INVALID_INPUT');
     }
     if (showPrice !== undefined && (typeof showPrice !== 'number' || !Number.isFinite(showPrice) || showPrice <= 0)) {
@@ -566,12 +673,23 @@ export const editShow = asyncHandler(async (req, res) => {
     if (mysteryRevealAt !== undefined && !MYSTERY_REVEAL_VALUES.includes(mysteryRevealAt)) {
         throw new AppError(`mysteryRevealAt must be one of: ${MYSTERY_REVEAL_VALUES.join(', ')}`, 400, 'INVALID_INPUT');
     }
+    if (accommodations !== undefined) validateAccommodations(accommodations);
     let parsedDateTime;
     if (showDateTime !== undefined) {
         parsedDateTime = new Date(showDateTime);
         if (Number.isNaN(parsedDateTime.getTime())) {
             throw new AppError('showDateTime is not a valid date', 400, 'INVALID_INPUT');
         }
+    }
+    let parsedSimulcastStart;
+    if (simulcastStartTime !== undefined) {
+        parsedSimulcastStart = new Date(simulcastStartTime);
+        if (Number.isNaN(parsedSimulcastStart.getTime())) {
+            throw new AppError('simulcastStartTime is not a valid date', 400, 'INVALID_INPUT');
+        }
+    }
+    if (combinedRuntimeMinutes !== undefined && (!Number.isFinite(combinedRuntimeMinutes) || combinedRuntimeMinutes <= 0)) {
+        throw new AppError('combinedRuntimeMinutes must be a positive number', 400, 'INVALID_INPUT');
     }
 
     const show = await loadShowForAdmin(showId, req.adminContext);
@@ -585,18 +703,31 @@ export const editShow = asyncHandler(async (req, res) => {
     if (mysteryIsChanging && await hasPaidBookings(show._id)) {
         throw new AppError('Cannot change mystery-movie settings on a show with paid bookings', 409, 'SHOW_HAS_PAID_BOOKINGS');
     }
+    const liveEventIsChanging = (parsedSimulcastStart && parsedSimulcastStart.getTime() !== show.simulcastStartTime?.getTime())
+        || (combinedRuntimeMinutes !== undefined && combinedRuntimeMinutes !== show.combinedRuntimeMinutes);
+    if (liveEventIsChanging && await hasPaidBookings(show._id)) {
+        throw new AppError('Cannot change live-event details on a show with paid bookings', 409, 'SHOW_HAS_PAID_BOOKINGS');
+    }
 
     const before = {
         showDateTime: show.showDateTime,
         showPrice: show.showPrice,
         isMysteryMovie: show.isMysteryMovie,
         mysteryRevealAt: show.mysteryRevealAt,
+        isRelaxedScreening: show.isRelaxedScreening,
+        accommodations: show.accommodations,
+        simulcastStartTime: show.simulcastStartTime,
+        combinedRuntimeMinutes: show.combinedRuntimeMinutes,
     };
 
     if (showPrice !== undefined) show.showPrice = showPrice;
     if (parsedDateTime) show.showDateTime = parsedDateTime;
     if (isMysteryMovie !== undefined) show.isMysteryMovie = isMysteryMovie;
     if (mysteryRevealAt !== undefined) show.mysteryRevealAt = mysteryRevealAt;
+    if (isRelaxedScreening !== undefined) show.isRelaxedScreening = isRelaxedScreening;
+    if (accommodations !== undefined) show.accommodations = accommodations;
+    if (parsedSimulcastStart) show.simulcastStartTime = parsedSimulcastStart;
+    if (combinedRuntimeMinutes !== undefined) show.combinedRuntimeMinutes = combinedRuntimeMinutes;
     await show.save();
 
     if (timeIsChanging) {
@@ -616,6 +747,10 @@ export const editShow = asyncHandler(async (req, res) => {
                 showPrice: show.showPrice,
                 isMysteryMovie: show.isMysteryMovie,
                 mysteryRevealAt: show.mysteryRevealAt,
+                isRelaxedScreening: show.isRelaxedScreening,
+                accommodations: show.accommodations,
+                simulcastStartTime: show.simulcastStartTime,
+                combinedRuntimeMinutes: show.combinedRuntimeMinutes,
             },
         },
     });

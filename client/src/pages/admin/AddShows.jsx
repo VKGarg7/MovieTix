@@ -14,6 +14,8 @@ import SelectedMoviePreview from "../../components/admin/addshow/SelectedMoviePr
 import DateTimeScheduler from "../../components/admin/addshow/DateTimeScheduler";
 import PricingPanel from "../../components/admin/addshow/PricingPanel";
 import MysteryMovieConfigCard from "../../components/admin/addshow/MysteryMovieConfigCard";
+import RelaxedScreeningConfigCard from "../../components/admin/addshow/RelaxedScreeningConfigCard";
+import LiveEventConfigCard from "../../components/admin/addshow/LiveEventConfigCard";
 import ValidationChecklist from "../../components/admin/addshow/ValidationChecklist";
 import LiveSummaryCard from "../../components/admin/addshow/LiveSummaryCard";
 import AddShowActionBar from "../../components/admin/addshow/AddShowActionBar";
@@ -41,6 +43,12 @@ const AddShows = () => {
   const [addingShow, setAddingShow] = useState(false);
   const [isMysteryMovie, setIsMysteryMovie] = useState(false);
   const [mysteryRevealAt, setMysteryRevealAt] = useState("onBooking");
+  const [isRelaxedScreening, setIsRelaxedScreening] = useState(false);
+  const [accommodations, setAccommodations] = useState([]);
+  const [isLiveEvent, setIsLiveEvent] = useState(false);
+  const [liveEventId, setLiveEventId] = useState("");
+  const [simulcastStartTime, setSimulcastStartTime] = useState("");
+  const [combinedRuntimeMinutes, setCombinedRuntimeMinutes] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const [theaters, setTheaters] = useState([]);
@@ -95,7 +103,7 @@ const AddShows = () => {
     });
   };
 
-  const resetForm = () => {
+  const resetForm = ({ keepLiveEvent = false } = {}) => {
     setSelectedMovie(null);
     setSelectedTheater("");
     setSelectedScreen("");
@@ -103,6 +111,14 @@ const AddShows = () => {
     setShowPrice("");
     setIsMysteryMovie(false);
     setMysteryRevealAt("onBooking");
+    setIsRelaxedScreening(false);
+    setAccommodations([]);
+    if (!keepLiveEvent) {
+      setIsLiveEvent(false);
+      setLiveEventId("");
+      setSimulcastStartTime("");
+      setCombinedRuntimeMinutes("");
+    }
     setSearchInput("");
   };
 
@@ -117,6 +133,11 @@ const AddShows = () => {
 
       const showsInput = Object.entries(dateTimeSelection).map(([date, time]) => ({ date, time }));
 
+      if (isLiveEvent && !simulcastStartTime) {
+        toast("Set a simulcast start time for this live event");
+        return;
+      }
+
       const payload = {
         movieId: selectedMovie,
         screenId: selectedScreen,
@@ -124,13 +145,23 @@ const AddShows = () => {
         showPrice: Number(showPrice),
         isMysteryMovie,
         mysteryRevealAt,
+        isRelaxedScreening,
+        accommodations,
+        isLiveEvent,
+        liveEventId: liveEventId || undefined,
+        simulcastStartTime: isLiveEvent ? new Date(simulcastStartTime).toISOString() : undefined,
+        combinedRuntimeMinutes: combinedRuntimeMinutes ? Number(combinedRuntimeMinutes) : undefined,
       };
 
       const { data } = await axios.post("/api/show/add", payload);
 
       if (data.success) {
         toast.success(data.message);
-        resetForm();
+        if (isLiveEvent && data.liveEventId) {
+          setLiveEventId(data.liveEventId);
+          toast("Add this same event at another theater? Pick its theater/screen and submit again — the simulcast time is locked in.", { icon: "📡", duration: 6000 });
+        }
+        resetForm({ keepLiveEvent: isLiveEvent });
         setPreviewOpen(false);
       } else {
         toast.error(data.message);
@@ -244,7 +275,6 @@ const AddShows = () => {
 
   return (
     <div ref={rootRef} onMouseMove={handlePointerMove} className="relative">
-      {/* cinematic ambient background */}
       <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden">
         <div
           className="absolute -top-20 -left-10 w-[30rem] h-[30rem] rounded-full blur-[120px] opacity-20"
@@ -354,8 +384,24 @@ const AddShows = () => {
             onRevealChange={setMysteryRevealAt}
           />
 
+          <RelaxedScreeningConfigCard
+            isRelaxedScreening={isRelaxedScreening}
+            onToggle={setIsRelaxedScreening}
+            accommodations={accommodations}
+            onAccommodationsChange={setAccommodations}
+          />
+
+          <LiveEventConfigCard
+            isLiveEvent={isLiveEvent}
+            onToggle={setIsLiveEvent}
+            simulcastStartTime={simulcastStartTime}
+            onSimulcastStartTimeChange={setSimulcastStartTime}
+            combinedRuntimeMinutes={combinedRuntimeMinutes}
+            onCombinedRuntimeChange={setCombinedRuntimeMinutes}
+          />
+
           <AddShowActionBar
-            onCancel={resetForm}
+            onCancel={() => resetForm()}
             onPreview={() => setPreviewOpen(true)}
             onPublish={handleSubmit}
             publishing={addingShow}
@@ -398,6 +444,10 @@ const AddShows = () => {
         dateTimeSelection={dateTimeSelection}
         isMysteryMovie={isMysteryMovie}
         mysteryRevealAt={mysteryRevealAt}
+        isRelaxedScreening={isRelaxedScreening}
+        isLiveEvent={isLiveEvent}
+        simulcastStartTime={simulcastStartTime}
+        combinedRuntimeMinutes={combinedRuntimeMinutes}
         currency={currency}
         imageBaseUrl={image_base_url}
       />

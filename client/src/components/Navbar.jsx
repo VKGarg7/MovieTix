@@ -22,6 +22,7 @@ import ProfileMenu from "./cinematic/ProfileMenu";
 const navLinks = [
   { to: "/", label: "Home" },
   { to: "/movies", label: "Movies" },
+  { to: "/flash-seats", label: "Flash Seats" },
   { to: "/theaters", label: "Theaters" },
   { to: "/community/screenings", label: "Open Screen" },
 ];

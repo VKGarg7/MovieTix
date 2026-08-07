@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { EyeOffIcon, XIcon, TicketIcon, HistoryIcon, GiftIcon, UsersIcon, ClockIcon, SparklesIcon, WalletCardsIcon, RepeatIcon, ClapperboardIcon } from "lucide-react";
+import { EyeOffIcon, XIcon, TicketIcon, HistoryIcon, GiftIcon, UsersIcon, ClockIcon, SparklesIcon, WalletCardsIcon, RepeatIcon, ClapperboardIcon, RadioTowerIcon } from "lucide-react";
 import Loading from "../components/Loading";
 import PageHeader from "../components/cinematic/PageHeader";
 import timeFormat from "../lib/timeFormat";
@@ -15,6 +15,7 @@ import TicketTransferModal from "../components/TicketTransferModal";
 import EmotionalPulsePrompt from "../components/EmotionalPulsePrompt";
 import LeaveNowReminderOptIn from "../components/LeaveNowReminderOptIn";
 import TrailerVoteWidget from "../components/TrailerVoteWidget";
+import DebateRoomWidget from "../components/DebateRoomWidget";
 
 const TRANSFER_CUTOFF_MINUTES = 30;
 
@@ -82,6 +83,7 @@ const MyBookings = () => {
   const [cancellingId, setCancellingId] = useState(null);
   const [activeTab, setActiveTab] = useState("Upcoming");
   const [downloadingId, setDownloadingId] = useState(null);
+  const [walletLoadingId, setWalletLoadingId] = useState(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [tabCounts, setTabCounts] = useState({ Upcoming: 0, Completed: 0, Cancelled: 0 });
@@ -298,6 +300,23 @@ const MyBookings = () => {
       toast.error(error?.response?.data?.message || "Failed to generate calendar event");
     }
     setDownloadingId(null);
+  };
+
+  const handleAddToWallet = async (bookingId) => {
+    setWalletLoadingId(bookingId);
+    try {
+      const { data } = await axios.get(`/api/booking/wallet/google/${bookingId}`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success && data.saveUrl) {
+        window.open(data.saveUrl, "_blank", "noopener,noreferrer");
+      } else {
+        toast.error(data.message || "Failed to generate wallet pass");
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Google Wallet isn't available right now");
+    }
+    setWalletLoadingId(null);
   };
 
   const handleShowQr = async (bookingId) => {
@@ -607,6 +626,13 @@ const MyBookings = () => {
                       <p className="text-gray-400 text-sm">
                         {timeFormat(item.show.movie.runtime)}
                       </p>
+                      {item.show.isLiveEvent && (
+                        <p className="flex items-center gap-1 text-xs text-nebula-amber mt-1">
+                          <RadioTowerIcon className="w-3 h-3" />
+                          Film + Live Q&amp;A
+                          {item.show.combinedRuntimeMinutes && ` · ${item.show.combinedRuntimeMinutes}min combined`}
+                        </p>
+                      )}
                       <p className="text-gray-400 text-sm mt-auto">
                         {dateFormat(item.show.showDateTime)}
                       </p>
@@ -643,6 +669,10 @@ const MyBookings = () => {
                   <EmotionalPulsePrompt bookingId={item._id} />
                 )}
 
+                {activeTab === "Completed" && item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.show?._id && (
+                  <DebateRoomWidget showId={item.show._id} />
+                )}
+
                 {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.show?.movie &&
                   <motion.button
                     whileHover={{ scale: 1.03 }}
@@ -652,6 +682,18 @@ const MyBookings = () => {
                     className="border border-primary text-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50 hover:bg-primary/10 transition-colors"
                   >
                     {downloadingId === item._id ? "Preparing..." : "Add to Calendar"}
+                  </motion.button>
+                }
+
+                {item.isPaid && item.status !== "cancelled" && item.status !== "pending-cancellation" && item.show?.movie &&
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => handleAddToWallet(item._id)}
+                    disabled={walletLoadingId === item._id}
+                    className="border border-primary text-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-50 hover:bg-primary/10 transition-colors"
+                  >
+                    {walletLoadingId === item._id ? "Preparing..." : "Add to Google Wallet"}
                   </motion.button>
                 }
 

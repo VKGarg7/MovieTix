@@ -16,6 +16,7 @@ import BookingAssistant from './components/BookingAssistant'
 
 const Home = lazy(() => import('./pages/Home'))
 const Movies = lazy(() => import('./pages/Movies'))
+const FlashSeats = lazy(() => import('./pages/FlashSeats'))
 const MovieDetails = lazy(() => import('./pages/MovieDetails'))
 const SeatLayout = lazy(() => import('./pages/SeatLayout'))
 const BookingFlow = lazy(() => import('./pages/booking/BookingFlow'))
@@ -30,6 +31,9 @@ const GroupBookingManage = lazy(() => import('./pages/GroupBookingManage'))
 const ShowtimePollCreate = lazy(() => import('./pages/ShowtimePollCreate'))
 const ShowtimePollVote = lazy(() => import('./pages/ShowtimePollVote'))
 const ShowtimePollManage = lazy(() => import('./pages/ShowtimePollManage'))
+const MatchSessionCreate = lazy(() => import('./pages/MatchSessionCreate'))
+const MatchSessionSwipe = lazy(() => import('./pages/MatchSessionSwipe'))
+const MatchSessionManage = lazy(() => import('./pages/MatchSessionManage'))
 const WaitlistClaim = lazy(() => import('./pages/WaitlistClaim'))
 const MyBookings = lazy(() => import('./pages/MyBookings'))
 const Wrapped = lazy(() => import('./pages/Wrapped'))
@@ -82,6 +86,7 @@ const App = () => {
       <Routes>
         <Route path='/' element={<Home/>} />
         <Route path='/movies' element={<Movies/>} />
+        <Route path='/flash-seats' element={<FlashSeats/>} />
         <Route path='/movies/:id' element={<MovieDetails/>} />
         <Route path='/book' element={<BookingFlow/>} />
         <Route path='/book/:movieId' element={<BookingFlow/>} />
@@ -97,6 +102,9 @@ const App = () => {
         <Route path='/movies/:id/showtime-poll' element={<ShowtimePollCreate/>} />
         <Route path='/showtime-poll/:pollId' element={<ShowtimePollVote/>} />
         <Route path='/showtime-poll/:pollId/manage' element={<ShowtimePollManage/>} />
+        <Route path='/movie-match' element={<MatchSessionCreate/>} />
+        <Route path='/movie-match/:sessionId' element={<MatchSessionSwipe/>} />
+        <Route path='/movie-match/:sessionId/manage' element={<MatchSessionManage/>} />
         <Route path='/waitlist/:entryId/claim' element={<WaitlistClaim/>} />
         <Route path='/my-bookings' element={<MyBookings/>} />
         <Route path='/wrapped' element={<Wrapped/>} />

@@ -63,3 +63,9 @@ export const showtimePollLimiter = buildLimiter({
     max: toInt(process.env.RATE_LIMIT_SHOWTIME_POLL_MAX, 30),
     message: 'Too many showtime-poll requests, please slow down.'
 });
+
+export const matchSessionLimiter = buildLimiter({
+    windowMs: minutes(toInt(process.env.RATE_LIMIT_MATCH_SESSION_WINDOW_MIN, 1)),
+    max: toInt(process.env.RATE_LIMIT_MATCH_SESSION_MAX, 30),
+    message: 'Too many movie-match requests, please slow down.'
+});

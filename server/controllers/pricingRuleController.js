@@ -89,7 +89,7 @@ export const deletePricingRule = asyncHandler(async (req, res) => {
 
 export const getAllPricingRules = asyncHandler(async (req, res) => {
     const { role, theaterId } = req.adminContext;
-    const filter = role === 'theaterAdmin' ? { theaterId } : {};
+    const filter = { source: 'admin', ...(role === 'theaterAdmin' ? { theaterId } : {}) };
 
     const { page, limit, skip } = parsePagination(req.query);
 

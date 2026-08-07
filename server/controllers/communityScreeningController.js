@@ -8,7 +8,7 @@ import { inngest } from '../inngest/index.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
 import { parsePagination, buildPageMeta } from '../utils/pagination.js';
-import { assertScreenBelongsToTheater, loadTheaterScopedResource, resolveTheaterIdForCreate, SCREEN_WITH_THEATER } from '../utils/theaterScope.js';
+import { assertScreenBelongsToTheater, loadTheaterScopedResource, resolveTheaterIdForCreate } from '../utils/theaterScope.js';
 import { recordAudit } from '../utils/auditLog.js';
 
 const DEFAULT_REVENUE_SPLIT_PERCENT = 70;

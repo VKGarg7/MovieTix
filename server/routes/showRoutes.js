@@ -1,5 +1,5 @@
 import express from "express"
-import { addShow, deleteShow, editMovie, editShow, getNowPlayingMovies, getOccupancyPulse, getShow, getShows, getSimilarMovies, searchBookableMovies, searchMovies, suggestShowtimes } from "../controllers/showController.js";
+import { addShow, deleteShow, editMovie, editShow, getFlashSeats, getNowPlayingMovies, getOccupancyPulse, getShow, getShows, getSimilarMovies, searchBookableMovies, searchMovies, suggestShowtimes } from "../controllers/showController.js";
 import { protectAdmin } from "../middleware/auth.js";
 import { publicApiLimiter } from "../middleware/rateLimit.js";
 
@@ -231,6 +231,46 @@ showRouter.get('/all' , publicApiLimiter, getShows)
  *         $ref: '#/components/responses/ServerError'
  */
 showRouter.get('/occupancy-pulse', publicApiLimiter, getOccupancyPulse)
+
+/**
+ * @openapi
+ * /show/flash-seats:
+ *   get:
+ *     summary: List currently-qualifying "Flash Seats" — shows starting soon and below the occupancy threshold, discounted
+ *     tags: [Show]
+ *     description: >
+ *       Auth: none (public). Rate limited per IP. A show qualifies while it starts within the
+ *       configured window (default 3h) and occupancy stays below the configured threshold
+ *       (default 30%). The discount is a system-generated pricing rule; booking normally
+ *       through the checkout flow charges the discounted price shown here automatically.
+ *     parameters:
+ *       - in: query
+ *         name: theaterId
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Currently-qualifying flash-discounted shows
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               shows:
+ *                 - showId: "abc123"
+ *                   showDateTime: "2026-08-04T18:30:00+05:30"
+ *                   theater: { name: "PVR Central", city: "Mumbai" }
+ *                   movie: { title: "Example Movie" }
+ *                   showPrice: 250
+ *                   computedPrice: 175
+ *                   occupiedCount: 12
+ *                   totalCapacity: 100
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       429:
+ *         $ref: '#/components/responses/TooManyRequests'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+showRouter.get('/flash-seats', publicApiLimiter, getFlashSeats)
 
 /**
  * @openapi

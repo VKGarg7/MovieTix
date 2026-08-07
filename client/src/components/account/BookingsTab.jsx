@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
-import { CalendarDaysIcon, ArmchairIcon, DownloadIcon, QrCodeIcon, ArrowRightIcon, TicketIcon, XIcon } from "lucide-react";
+import { CalendarDaysIcon, ArmchairIcon, DownloadIcon, QrCodeIcon, ArrowRightIcon, TicketIcon, XIcon, WalletIcon } from "lucide-react";
 import { dateFormat } from "../../lib/dateFomat";
 import { useAppContext } from "../../context/useAppContext";
 import toast from "react-hot-toast";
@@ -12,6 +12,7 @@ const BookingsTab = ({ bookings, loading }) => {
   const [downloadingId, setDownloadingId] = useState(null);
   const [qrUrl, setQrUrl] = useState(null);
   const [loadingQrId, setLoadingQrId] = useState(null);
+  const [walletLoadingId, setWalletLoadingId] = useState(null);
 
   const upcoming = bookings.find((b) => b.show?.showDateTime && new Date(b.show.showDateTime) > new Date());
   const recent = bookings.slice(0, 6);
@@ -35,6 +36,23 @@ const BookingsTab = ({ bookings, loading }) => {
       toast.error(error?.response?.data?.message || "Failed to generate calendar event");
     }
     setDownloadingId(null);
+  };
+
+  const handleAddToWallet = async (item) => {
+    setWalletLoadingId(item._id);
+    try {
+      const { data } = await axios.get(`/api/booking/wallet/google/${item._id}`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      });
+      if (data.success && data.saveUrl) {
+        window.open(data.saveUrl, "_blank", "noopener,noreferrer");
+      } else {
+        toast.error(data.message || "Failed to generate wallet pass");
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Google Wallet isn't available right now");
+    }
+    setWalletLoadingId(null);
   };
 
   const handleShowQr = async (item) => {
@@ -107,6 +125,14 @@ const BookingsTab = ({ bookings, loading }) => {
                 >
                   <DownloadIcon className="w-3.5 h-3.5" />
                   {downloadingId === upcoming._id ? "Preparing…" : "Add to Calendar"}
+                </button>
+                <button
+                  onClick={() => handleAddToWallet(upcoming)}
+                  disabled={walletLoadingId === upcoming._id}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <WalletIcon className="w-3.5 h-3.5" />
+                  {walletLoadingId === upcoming._id ? "Preparing…" : "Add to Google Wallet"}
                 </button>
                 {upcoming.snacks?.length > 0 && (
                   <button

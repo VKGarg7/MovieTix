@@ -1,4 +1,3 @@
-import Booking from '../models/Booking.js';
 import Show from '../models/Show.js';
 import { inngest } from '../inngest/index.js';
 import asyncHandler from '../utils/asyncHandler.js';

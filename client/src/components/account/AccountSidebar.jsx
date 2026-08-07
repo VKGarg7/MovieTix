@@ -6,6 +6,7 @@ import {
   TicketIcon,
   HeartIcon,
   GiftIcon,
+  StampIcon,
   ShieldIcon,
   LogOutIcon,
 } from "lucide-react";
@@ -15,6 +16,7 @@ const TABS = [
   { key: "bookings", label: "Bookings", icon: TicketIcon },
   { key: "wishlist", label: "Wishlist", icon: HeartIcon },
   { key: "rewards", label: "Rewards", icon: GiftIcon },
+  { key: "passport", label: "Passport", icon: StampIcon },
   { key: "security", label: "Security", icon: ShieldIcon },
 ];
 

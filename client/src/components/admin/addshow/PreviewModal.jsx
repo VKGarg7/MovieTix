@@ -1,8 +1,11 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { XIcon, FilmIcon, Building2Icon, MonitorPlayIcon, BanknoteIcon, EyeOffIcon } from "lucide-react";
+import { XIcon, FilmIcon, Building2Icon, MonitorPlayIcon, BanknoteIcon, EyeOffIcon, HeartHandshakeIcon, RadioTowerIcon } from "lucide-react";
 
-const PreviewModal = ({ open, onClose, movie, theater, screen, showPrice, dateTimeSelection, isMysteryMovie, mysteryRevealAt, currency, imageBaseUrl }) => {
+const PreviewModal = ({
+  open, onClose, movie, theater, screen, showPrice, dateTimeSelection, isMysteryMovie, mysteryRevealAt, isRelaxedScreening,
+  isLiveEvent, simulcastStartTime, combinedRuntimeMinutes, currency, imageBaseUrl,
+}) => {
   const totalScreenings = Object.values(dateTimeSelection).reduce((sum, times) => sum + times.length, 0);
 
   return (
@@ -47,6 +50,18 @@ const PreviewModal = ({ open, onClose, movie, theater, screen, showPrice, dateTi
                 {isMysteryMovie && (
                   <p className="flex items-center gap-1 text-xs text-nebula-violet mt-1">
                     <EyeOffIcon className="w-3 h-3" /> Reveals {mysteryRevealAt === "onBooking" ? "on booking" : "at theater"}
+                  </p>
+                )}
+                {isRelaxedScreening && (
+                  <p className="flex items-center gap-1 text-xs text-nebula-cyan mt-1">
+                    <HeartHandshakeIcon className="w-3 h-3" /> Relaxed Screening
+                  </p>
+                )}
+                {isLiveEvent && (
+                  <p className="flex items-center gap-1 text-xs text-nebula-amber mt-1">
+                    <RadioTowerIcon className="w-3 h-3" /> Live Event
+                    {simulcastStartTime && ` — simulcast at ${new Date(simulcastStartTime).toLocaleString()}`}
+                    {combinedRuntimeMinutes && ` · ${combinedRuntimeMinutes}min combined`}
                   </p>
                 )}
               </div>

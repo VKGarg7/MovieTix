@@ -13,6 +13,11 @@ const STATUS_OPTIONS = [
   { value: "completed", label: "Completed" },
 ];
 
+const RELAXED_OPTIONS = [
+  { value: "all", label: "All Screenings" },
+  { value: "relaxed", label: "Relaxed Only" },
+];
+
 const SORT_OPTIONS = [
   { value: "time-asc", label: "Show Time ↑" },
   { value: "time-desc", label: "Show Time ↓" },
@@ -67,6 +72,8 @@ const ShowFilterBar = ({ filters, setFilters, languages, genres, viewMode, setVi
         options={[{ value: "all", label: "All Genres" }, ...genres.map((g) => ({ value: g, label: g }))]}
         className="!text-xs !py-1.5"
       />
+
+      <Select value={filters.relaxed} onChange={update("relaxed")} options={RELAXED_OPTIONS} className="!text-xs !py-1.5" />
 
       <Select value={filters.sort} onChange={update("sort")} options={SORT_OPTIONS} className="!text-xs !py-1.5" />
 

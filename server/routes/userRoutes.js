@@ -1,5 +1,5 @@
 import express from 'express';
-import { followMovie, getFavorites, getFollowedMovies, getFollowStatus, getUserBookings, unfollowMovie, updateFavorite, getPointsSummary, getPointsHistory, getReferralInfo, getWrapped } from '../controllers/userController.js';
+import { followMovie, getFavorites, getFollowedMovies, getFollowStatus, getUserBookings, unfollowMovie, updateFavorite, getPointsSummary, getPointsHistory, getReferralInfo, getWrapped, getMyPassport } from '../controllers/userController.js';
 import { protectUser } from '../middleware/auth.js';
 
 const userRouter = express.Router();
@@ -328,5 +328,31 @@ userRouter.get('/referral', protectUser, getReferralInfo);
  *         $ref: '#/components/responses/ServerError'
  */
 userRouter.get('/wrapped', protectUser, getWrapped);
+
+/**
+ * @openapi
+ * /user/passport:
+ *   get:
+ *     summary: Get the authenticated user's Cinema Passport (theater stamps and milestones)
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     description: "Auth: signed-in user. A theater is stamped the first time a paid, non-cancelled booking's show has actually occurred there — stamps are granted by a post-show batch job, not at booking time."
+ *     responses:
+ *       200:
+ *         description: Passport stamps and milestone progress
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               stamps: [{ theaterId: "64f...", name: "PVR Central", city: "Mumbai", firstVisitedAt: "2026-05-01T18:00:00.000Z" }]
+ *               theaterCount: 1
+ *               milestones: [{ theaterCount: 3, bonusPoints: 100, reached: false }]
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+userRouter.get('/passport', protectUser, getMyPassport);
 
 export default userRouter;

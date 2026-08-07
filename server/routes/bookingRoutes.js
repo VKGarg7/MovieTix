@@ -1,5 +1,5 @@
 import express from 'express';
-import { createBooking, getBookingStatus, getOccupiedSeats, cancelBooking, getBookingCalendar, getBookingPickupQr, verifyBookingPickup } from '../controllers/bookingController.js';
+import { createBooking, getBookingStatus, getOccupiedSeats, cancelBooking, getBookingCalendar, getBookingPickupQr, verifyBookingPickup, getBookingWalletLink } from '../controllers/bookingController.js';
 import { protectUser, protectAdmin } from '../middleware/auth.js';
 import { seatPollingLimiter } from '../middleware/rateLimit.js';
 
@@ -172,6 +172,47 @@ bookingRouter.post('/cancel/:bookingId', protectUser, cancelBooking);
  *         $ref: '#/components/responses/ServerError'
  */
 bookingRouter.get('/calendar/:bookingId', protectUser, getBookingCalendar);
+
+/**
+ * @openapi
+ * /booking/wallet/google/{bookingId}:
+ *   get:
+ *     summary: Get a "Save to Google Wallet" link for a paid booking
+ *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
+ *     description: >
+ *       Auth: signed-in user (must own the booking). Only available for paid bookings, and
+ *       only when the server has Google Wallet credentials configured (GOOGLE_WALLET_ISSUER_ID,
+ *       GOOGLE_WALLET_SERVICE_ACCOUNT) — returns 503 otherwise. The pass shows the same
+ *       signed QR code used for in-app/at-door verification.
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Save-to-wallet URL
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               saveUrl: "https://pay.google.com/gp/v/save/<jwt>"
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthenticated'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       502:
+ *         description: Google Wallet API call failed
+ *       503:
+ *         description: Google Wallet is not configured on this server
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+bookingRouter.get('/wallet/google/:bookingId', protectUser, getBookingWalletLink);
 
 /**
  * @openapi

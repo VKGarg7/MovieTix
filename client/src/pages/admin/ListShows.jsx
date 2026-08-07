@@ -17,7 +17,7 @@ import { getShowStatus } from '../../lib/showStatus';
 import { downloadCsvRows, downloadCsvBlob } from '../../lib/downloadCsv';
 
 const DEFAULT_FILTERS = {
-  movieQuery: '', theaterQuery: '', status: 'all', date: '', language: 'all', genre: 'all', sort: 'time-asc',
+  movieQuery: '', theaterQuery: '', status: 'all', date: '', language: 'all', genre: 'all', relaxed: 'all', sort: 'time-asc',
 };
 
 const ListShows = () => {
@@ -92,6 +92,7 @@ const ListShows = () => {
       if (filters.date && new Date(show.showDateTime).toISOString().slice(0, 10) !== filters.date) return false;
       if (filters.language !== 'all' && show.movie?.original_language !== filters.language) return false;
       if (filters.genre !== 'all' && !(show.movie?.genres || []).some((g) => g.name === filters.genre)) return false;
+      if (filters.relaxed === 'relaxed' && !show.isRelaxedScreening) return false;
       return true;
     });
 

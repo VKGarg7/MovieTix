@@ -27,6 +27,7 @@ const bookingSchema = new mongoose.Schema({
     groupBookingSeats: {type: [String], default: []},
     waitlistEntryId: {type: mongoose.Schema.Types.ObjectId, ref: 'Waitlist', default: null},
     postCreditsAlertSent: {type: Boolean, default: false},
+    passportStampProcessed: {type: Boolean, default: false},
     bingePassCreditUsed: {type: Boolean, default: false},
     bingePassCreditAmount: {type: Number, default: 0},
     giftCardCode: {type: String, default: null},

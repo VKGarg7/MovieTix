@@ -9,6 +9,7 @@ import OverviewTab from "../components/account/OverviewTab";
 import BookingsTab from "../components/account/BookingsTab";
 import WishlistTab from "../components/account/WishlistTab";
 import RewardsTab from "../components/account/RewardsTab";
+import PassportTab from "../components/account/PassportTab";
 import SecurityTab from "../components/account/SecurityTab";
 import Loading from "../components/Loading";
 
@@ -17,7 +18,7 @@ const Account = () => {
   const { axios, getToken, favoriteMovies } = useAppContext();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const VALID_TABS = ["overview", "bookings", "wishlist", "rewards", "security"];
+  const VALID_TABS = ["overview", "bookings", "wishlist", "rewards", "passport", "security"];
   const initialTab = VALID_TABS.includes(searchParams.get("tab")) ? searchParams.get("tab") : "overview";
   const [activeTab, setActiveTabState] = useState(initialTab);
 
@@ -121,6 +122,7 @@ const Account = () => {
               {activeTab === "bookings" && <BookingsTab bookings={bookings} loading={bookingsLoading} />}
               {activeTab === "wishlist" && <WishlistTab favoriteMovies={favoriteMovies} />}
               {activeTab === "rewards" && <RewardsTab pointsBalance={pointsBalance} />}
+              {activeTab === "passport" && <PassportTab />}
               {activeTab === "security" && <SecurityTab />}
             </motion.div>
           </AnimatePresence>

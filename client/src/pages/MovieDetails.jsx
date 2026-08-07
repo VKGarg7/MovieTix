@@ -24,7 +24,11 @@ import {
   TicketIcon,
   ThumbsUpIcon,
   UsersIcon,
+  HeartHandshakeIcon,
+  RadioTowerIcon,
+  ShuffleIcon,
 } from "lucide-react";
+import { ACCOMMODATION_LABELS } from "../lib/accommodations";
 import MovieCard from "../components/MovieCard";
 import Loading from "../components/Loading";
 import AnimatedTitle from "../components/cinematic/AnimatedTitle";
@@ -548,6 +552,17 @@ const MovieDetails = () => {
                     )}
                     <span className="text-sm">{isFollowing ? "Following" : "Notify Me"}</span>
                   </motion.button>
+
+                  <motion.button
+                    whileHover={{ scale: 1.04, y: -2 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => navigate("/movie-match")}
+                    title="Can't agree with friends on what to watch? Start a swipe-to-decide session."
+                    className="flex items-center gap-2 bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 backdrop-blur-xl px-4 py-3 rounded-full transition-colors cursor-pointer"
+                  >
+                    <ShuffleIcon className="w-5 h-5 text-nebula-cyan" />
+                    <span className="text-sm">Start a Movie Match</span>
+                  </motion.button>
                 </>
               )}
             </div>
@@ -743,10 +758,23 @@ const MovieDetails = () => {
                               {badge.label}
                             </span>
                           )}
-                          <span className="text-sm font-medium">{isoTimeFormat(showtime.time)}</span>
+                          <span className="text-sm font-medium flex items-center gap-1.5">
+                            {isoTimeFormat(showtime.time)}
+                            {showtime.isRelaxedScreening && (
+                              <HeartHandshakeIcon className="w-3.5 h-3.5 text-nebula-cyan" />
+                            )}
+                            {showtime.isLiveEvent && (
+                              <RadioTowerIcon className="w-3.5 h-3.5 text-nebula-amber" />
+                            )}
+                          </span>
                           <span className="text-[11px] text-gray-400">
                             {showtime.screen?.name || "Screen"} · IMAX
                           </span>
+                          {showtime.isLiveEvent && (
+                            <span className="text-[10px] text-nebula-amber font-medium">
+                              + Live Q&amp;A{showtime.combinedRuntimeMinutes ? ` · ${showtime.combinedRuntimeMinutes}min total` : ""}
+                            </span>
+                          )}
                           {price != null && (
                             <span className="text-xs text-nebula-cyan font-medium">₹{price}</span>
                           )}
@@ -762,13 +790,50 @@ const MovieDetails = () => {
                 <div className="mt-6 flex flex-wrap gap-2 text-[11px] text-gray-500">
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-nebula-amber" /> Fast Filling</span>
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Almost Full</span>
+                  <span className="flex items-center gap-1"><HeartHandshakeIcon className="w-3 h-3 text-nebula-cyan" /> Relaxed Screening</span>
                 </div>
+
+                {showtimesForDate.some((s) => s.isRelaxedScreening) && (
+                  <div className="mt-4 p-4 rounded-2xl border border-nebula-cyan/20 bg-nebula-cyan/[0.04]">
+                    <p className="flex items-center gap-2 text-sm font-medium text-nebula-cyan mb-2">
+                      <HeartHandshakeIcon className="w-4 h-4" /> What to expect at a Relaxed Screening
+                    </p>
+                    <p className="text-xs text-gray-400 leading-relaxed mb-2">
+                      Showtimes marked with{" "}
+                      <HeartHandshakeIcon className="inline w-3 h-3 text-nebula-cyan align-[-1px]" />{" "}
+                      have adjusted house conditions for viewers sensitive to full darkness, loud sudden
+                      sound, or strict silence rules. In-room adjustments are carried out by theater staff.
+                    </p>
+                    <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
+                      {[...new Set(showtimesForDate.flatMap((s) => s.accommodations || []))].map((value) => (
+                        <li key={value}>{ACCOMMODATION_LABELS[value] || value}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {showtimesForDate.some((s) => s.isLiveEvent) && (
+                  <div className="mt-4 p-4 rounded-2xl border border-nebula-amber/20 bg-nebula-amber/[0.04]">
+                    <p className="flex items-center gap-2 text-sm font-medium text-nebula-amber mb-2">
+                      <RadioTowerIcon className="w-4 h-4" /> Live Q&amp;A Event
+                    </p>
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      Showtimes marked with{" "}
+                      <RadioTowerIcon className="inline w-3 h-3 text-nebula-amber align-[-1px]" />{" "}
+                      include a live simulcast segment (Q&amp;A, intro, or similar) right after the film,
+                      streamed into the theater at the same time as every other participating theater.
+                      One ticket covers both the film and the live segment.
+                      {showtimesForDate.find((s) => s.isLiveEvent)?.combinedRuntimeMinutes && (
+                        <> Combined runtime: {showtimesForDate.find((s) => s.isLiveEvent).combinedRuntimeMinutes} minutes.</>
+                      )}
+                    </p>
+                  </div>
+                )}
               </GlassPanel>
             </div>
           </RevealSection>
         </div>
 
-        {/* reviews */}
         {!isMystery && (
           <RevealSection className="mt-24">
             <p className="section-eyebrow mb-2">Word Of Mouth</p>
