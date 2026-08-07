@@ -6,6 +6,7 @@ import Loading from "../components/Loading";
 import BlurCircle from "../components/BlurCircle";
 import { useAppContext } from "../context/useAppContext";
 import PillOptionSelector from "../components/PillOptionSelector";
+import { consumeMatchHandoffNames } from "../lib/matchHandoff";
 
 const MIN_CANDIDATES = 2;
 const MAX_CANDIDATES = 4;
@@ -17,7 +18,7 @@ const ShowtimePollCreate = () => {
 
   const [show, setShow] = useState(null);
   const [selectedShowIds, setSelectedShowIds] = useState([]);
-  const [inviteeNames, setInviteeNames] = useState(["", ""]);
+  const [inviteeNames, setInviteeNames] = useState(() => consumeMatchHandoffNames() || ["", ""]);
   const [expiresInHours, setExpiresInHours] = useState(48);
   const [organizerNote, setOrganizerNote] = useState("");
   const [submitting, setSubmitting] = useState(false);

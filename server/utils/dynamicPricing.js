@@ -10,7 +10,7 @@ export const timeOfWeekRuleMatches = (rule, showDateTime, timezone) => {
     return rule.daysOfWeek.includes(weekday) && hour >= rule.startHour && hour < rule.endHour;
 };
 
-const ruleApplies = (rule, { showDateTime, bookingTime, timezone }) => {
+const ruleApplies = (rule, { showDateTime, bookingTime, timezone, showId }) => {
     if (rule.type === 'time_of_week') {
         return timeOfWeekRuleMatches(rule, showDateTime, timezone);
     }
@@ -18,6 +18,10 @@ const ruleApplies = (rule, { showDateTime, bookingTime, timezone }) => {
     if (rule.type === 'early_bird') {
         const daysBefore = DateTime.fromJSDate(showDateTime).diff(DateTime.fromJSDate(bookingTime), 'days').days;
         return daysBefore >= rule.minDaysBeforeShow;
+    }
+
+    if (rule.type === 'flash_seats') {
+        return Boolean(showId) && rule.showId === showId;
     }
 
     return false;
@@ -30,8 +34,8 @@ export const fetchApplicableRules = async (theaterId) => {
     });
 };
 
-export const computeShowPrice = (basePrice, rules, { showDateTime, timezone, bookingTime = new Date() }) => {
-    const matching = rules.filter(rule => ruleApplies(rule, { showDateTime, bookingTime, timezone }));
+export const computeShowPrice = (basePrice, rules, { showDateTime, timezone, bookingTime = new Date(), showId }) => {
+    const matching = rules.filter(rule => ruleApplies(rule, { showDateTime, bookingTime, timezone, showId }));
     const surcharges = matching.filter(r => r.adjustmentPercent > 0);
     const discounts = matching.filter(r => r.adjustmentPercent < 0);
 
@@ -49,5 +53,10 @@ export const computeShowPrice = (basePrice, rules, { showDateTime, timezone, boo
 
 export const getComputedPriceForShow = async (show, theaterId, timezone, bookingTime) => {
     const rules = await fetchApplicableRules(theaterId);
-    return computeShowPrice(show.showPrice, rules, { showDateTime: show.showDateTime, timezone, bookingTime });
+    return computeShowPrice(show.showPrice, rules, {
+        showDateTime: show.showDateTime,
+        timezone,
+        bookingTime,
+        showId: show._id?.toString ? show._id.toString() : show._id,
+    });
 };

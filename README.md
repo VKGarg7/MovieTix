@@ -413,6 +413,8 @@ Copy `server/.env.example` → `server/.env` and `client/.env.example` → `clie
 | `GMAIL_USER` | ✅ | Gmail address used to send emails | `you@gmail.com` |
 | `GMAIL_PASS` | ✅ | Gmail app password | `abcd efgh ijkl mnop` |
 | `QR_TOKEN_SECRET` | ✅ | HMAC secret for signing concession pickup QR tokens | `super-secret-string` |
+| `GOOGLE_WALLET_ISSUER_ID` | ➖ | Google Wallet Issuer ID from the [Google Pay & Wallet Console](https://pay.google.com/business/console). "Add to Google Wallet" is disabled and no-ops if unset. | `3388000000012345678` |
+| `GOOGLE_WALLET_SERVICE_ACCOUNT` | ➖ | Google Cloud service-account JSON (Wallet Objects API enabled), as a single-line string | `{"client_email":"...","private_key":"..."}` |
 | `LOG_LEVEL` | ➖ | Logging verbosity | `info` |
 | `RATE_LIMIT_PUBLIC_WINDOW_MIN` | ➖ | Window (minutes) for public rate limiting | `1` |
 | `RATE_LIMIT_PUBLIC_MAX` | ➖ | Max public requests per window | `60` |

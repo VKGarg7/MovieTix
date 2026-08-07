@@ -4,6 +4,14 @@ import Booking from "../models/Booking.js";
 import GroupBooking from "../models/GroupBooking.js";
 import GiftCard from "../models/GiftCard.js";
 import ShowtimePoll from "../models/ShowtimePoll.js";
+import MatchSession from "../models/MatchSession.js";
+import CinemaPassport from "../models/CinemaPassport.js";
+import DebateRoom from "../models/DebateRoom.js";
+import PricingRule from "../models/PricingRule.js";
+import { qualifiesForFlashSeats, FLASH_SEATS_WINDOW_HOURS, FLASH_SEATS_DISCOUNT_PERCENT } from "../utils/flashSeats.js";
+import PointsTransaction from "../models/PointsTransaction.js";
+import { findNewlyReachedMilestones } from "../utils/passportMilestones.js";
+import { CANCELLED_STATUSES } from "../controllers/userController.js";
 import Show from "../models/Show.js";
 import Follow from "../models/Follow.js";
 import sendEmail from "../configs/nodeMailer.js";
@@ -25,6 +33,7 @@ import { isMysteryRevealed } from "../utils/mysteryMovie.js";
 import PriceWatch from "../models/PriceWatch.js";
 import { getComputedPriceForShow } from "../utils/dynamicPricing.js";
 import { refundBingePassCredit } from "../controllers/subscriptionController.js";
+import { buildGoogleWalletSaveUrlForBooking } from "../utils/googleWallet.js";
 import TicketTransfer from "../models/TicketTransfer.js";
 import CommunityScreeningRequest from "../models/CommunityScreeningRequest.js";
 import { estimateTravelMinutes } from "../utils/directionsClient.js";
@@ -218,6 +227,64 @@ const notifyShowtimePollClosed = inngest.createFunction(
     });
 
     logger.info({ pollId, groupBookingId }, 'Showtime poll outcome notification sent to organizer');
+  }
+)
+
+const expireMatchSession = inngest.createFunction(
+  { id: 'expire-match-session' },
+  { event: 'app/match-session.expire' },
+  async ({ event, step }) => {
+    const { sessionId, expiresAt } = event.data;
+    await step.sleepUntil('wait-until-session-expiry', new Date(expiresAt));
+
+    await step.run('mark-expired-if-still-active', async () => {
+      const session = await MatchSession.findOneAndUpdate(
+        { _id: sessionId, status: 'active' },
+        { $set: { status: 'expired' } },
+        { new: true }
+      );
+      if (!session) return;
+
+      const host = await User.findById(session.hostId);
+      if (!host) return;
+
+      const manageUrl = `${process.env.CLIENT_URL}/movie-match/${session._id}/manage`;
+
+      await sendEmail({
+        to: host.email,
+        subject: 'Your Movie Match session expired without everyone swiping',
+        body: renderEmail({
+          greetingName: host.name,
+          bodyHtml: `
+            <p>Your Movie Match session expired before everyone finished swiping.</p>
+            <p><a href="${manageUrl}">Open the session</a> to see the closest match and start a poll or booking manually.</p>
+          `,
+          closingLine: 'No rush — the candidates are still there until you decide.',
+        }),
+      });
+
+      logger.info({ sessionId }, 'Match session expired without full swipe-through, host notified');
+    });
+  }
+)
+
+const expireDebateRoom = inngest.createFunction(
+  { id: 'expire-debate-room' },
+  { event: 'app/debate-room.expire' },
+  async ({ event, step }) => {
+    const { roomId, expiresAt } = event.data;
+    await step.sleepUntil('wait-until-room-expiry', new Date(expiresAt));
+
+    await step.run('mark-expired-if-still-active', async () => {
+      const room = await DebateRoom.findOneAndUpdate(
+        { _id: roomId, status: 'active' },
+        { $set: { status: 'expired' } },
+        { new: true }
+      );
+      if (!room) return;
+
+      logger.info({ roomId, messageCount: room.messages.length }, 'Debate room closed after 24h window');
+    });
   }
 )
 
@@ -537,6 +604,16 @@ const sendBookingConfirmationEmail = inngest.createFunction(
           <p><img src="cid:pickup-qr" alt="Concession pickup QR code" width="200" height="200"></p>
         ` : '';
 
+    let walletHtml = '';
+    try {
+      const saveUrl = await buildGoogleWalletSaveUrlForBooking(booking);
+      if (saveUrl) {
+        walletHtml = `<p><a href="${saveUrl}" style="display:inline-block;background:#000;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;">Add to Google Wallet</a></p>`;
+      }
+    } catch (walletError) {
+      logger.error({ err: walletError, bookingId }, 'Failed to build Google Wallet link for confirmation email (non-critical)');
+    }
+
     await sendEmail({
       to: booking.user.email,
       subject: `Payment Confirmation: "${movieTitle}" booked!`,
@@ -550,6 +627,7 @@ const sendBookingConfirmationEmail = inngest.createFunction(
             <strong>Time:</strong> ${showTime}
           </p>
           <p>An "Add to Calendar" invite (.ics) is attached to this email.</p>
+          ${walletHtml}
           ${snacksHtml}
         `,
         closingLine: 'Thanks for booking with us! 🍿',
@@ -931,4 +1009,158 @@ const sendPostCreditsAlerts = inngest.createFunction(
   }
 )
 
-export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdation, releaseSeatsAndDeleteBooking , sendBookingConfirmationEmail , sendShowReminders , sendNewShowNotification, expireGroupBooking, sendWaitlistOffer, expireShowtimePoll, notifyShowtimePollClosed, sendPriceDropAlerts, sendPostCreditsAlerts, sendGiftCardEmail, sendGiftTicketEmail, sendDirectTicketTransferEmail, notifyResaleCompleted, notifyScreeningRequestApproved, notifyScreeningRequestRejected, scheduleLeaveNowReminder];
+const FLASH_SEATS_CHECK_CRON = '*/15 * * * *';
+
+const scanFlashSeats = inngest.createFunction(
+  { id: 'scan-flash-seats' },
+  { cron: FLASH_SEATS_CHECK_CRON },
+  async ({ step }) => {
+    const now = new Date();
+
+    const expiredCount = await step.run('expire-started-flash-rules', async () => {
+      const startedShowIds = await Show.distinct('_id', { showDateTime: { $lte: now } });
+      const result = await PricingRule.updateMany(
+        { type: 'flash_seats', isActive: true, showId: { $in: startedShowIds.map(id => id.toString()) } },
+        { $set: { isActive: false } }
+      );
+      return result.modifiedCount;
+    });
+
+    const createdCount = await step.run('create-flash-rules-for-qualifying-shows', async () => {
+      const windowEnd = new Date(now.getTime() + FLASH_SEATS_WINDOW_HOURS * 60 * 60 * 1000);
+      const candidateShows = await Show.find({
+        showDateTime: { $gt: now, $lte: windowEnd },
+        isCancelled: { $ne: true },
+      }).populate(SCREEN_WITH_THEATER);
+
+      const alreadyFlashed = await PricingRule.distinct('showId', {
+        type: 'flash_seats',
+        isActive: true,
+        showId: { $in: candidateShows.map(s => s._id.toString()) },
+      });
+      const alreadyFlashedSet = new Set(alreadyFlashed);
+
+      let created = 0;
+      for (const show of candidateShows) {
+        if (alreadyFlashedSet.has(show._id.toString()) || !qualifiesForFlashSeats(show, now)) continue;
+
+        try {
+          await PricingRule.create({
+            name: `Flash Seats — ${show._id}`,
+            type: 'flash_seats',
+            adjustmentPercent: -FLASH_SEATS_DISCOUNT_PERCENT,
+            theaterId: show.screen?.theater?._id ?? null,
+            showId: show._id.toString(),
+            source: 'system',
+          });
+          created += 1;
+        } catch (error) {
+          if (error.code !== 11000) throw error; 
+        }
+      }
+      return created;
+    });
+
+    logger.info({ expiredCount, createdCount }, 'Flash Seats scan complete');
+    return { expiredCount, createdCount };
+  }
+)
+
+const processCinemaPassportStamps = inngest.createFunction(
+  { id: 'process-cinema-passport-stamps' },
+  { cron: '*/30 * * * *' },
+  async ({ step }) => {
+    const now = new Date();
+
+    const dueBookings = await step.run('find-due-bookings', async () => {
+      const finishedShowIds = await Show.distinct('_id', { showDateTime: { $lte: now } });
+      if (finishedShowIds.length === 0) return [];
+
+      const bookings = await Booking.find({
+        show: { $in: finishedShowIds.map(id => id.toString()) },
+        isPaid: true,
+        status: { $nin: CANCELLED_STATUSES },
+        passportStampProcessed: false,
+      });
+
+      return bookings.map(b => ({ bookingId: b._id.toString(), userId: b.user, showId: b.show }));
+    });
+
+    if (dueBookings.length === 0) {
+      return { stamped: 0, message: 'No passport stamps due' };
+    }
+
+    const results = await step.run('stamp-passports-and-award-milestones', async () => {
+      const showIds = [...new Set(dueBookings.map(b => b.showId))];
+      const shows = await Show.find({ _id: { $in: showIds } }).populate(SCREEN_WITH_THEATER);
+      const theaterByShowId = new Map(shows.map(s => [s._id.toString(), s.screen?.theater]));
+
+      return Promise.allSettled(dueBookings.map(async (task) => {
+        const theater = theaterByShowId.get(task.showId);
+        if (!theater) {
+          await Booking.updateOne({ _id: task.bookingId }, { $set: { passportStampProcessed: true } });
+          return;
+        }
+
+        const passport = await CinemaPassport.findOneAndUpdate(
+          { user: task.userId },
+          { $setOnInsert: { user: task.userId } },
+          { upsert: true, new: true }
+        );
+
+        const previousCount = passport.stamps.length;
+        const alreadyStamped = passport.stamps.some(s => s.theater.toString() === theater._id.toString());
+
+        if (!alreadyStamped) {
+          passport.stamps.push({ theater: theater._id, firstVisitedAt: now });
+        }
+
+        const newCount = passport.stamps.length;
+        const newlyReached = findNewlyReachedMilestones(previousCount, newCount, passport.milestonesReached);
+
+        if (newlyReached.length > 0) {
+          passport.milestonesReached.push(...newlyReached.map(m => m.theaterCount));
+        }
+        await passport.save();
+        await Booking.updateOne({ _id: task.bookingId }, { $set: { passportStampProcessed: true } });
+
+        if (newlyReached.length > 0) {
+          const user = await User.findById(task.userId);
+          if (user) {
+            await PointsTransaction.create(
+              newlyReached.map(m => ({ user: task.userId, delta: m.bonusPoints, reason: 'earned', booking: null }))
+            );
+
+            for (const milestone of newlyReached) {
+              await sendEmail({
+                to: user.email,
+                subject: `Cinema Passport milestone unlocked: ${milestone.theaterCount} theaters!`,
+                body: renderEmail({
+                  greetingName: user.name,
+                  bodyHtml: `
+                    <p>You've now collected stamps from ${highlight(`${milestone.theaterCount} different theaters`)} in your Cinema Passport!</p>
+                    <p>As a thank-you, ${highlight(`${milestone.bonusPoints} bonus loyalty points`)} have been added to your account.</p>
+                  `,
+                  closingLine: 'Keep exploring — new venues, new stamps!',
+                }),
+              });
+            }
+          }
+        }
+      }));
+    });
+
+    const stamped = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - stamped;
+
+    if (failed > 0) {
+      logger.warn({ stamped, failed }, 'Some Cinema Passport stamps failed to process');
+    } else {
+      logger.info({ stamped }, 'Cinema Passport stamps processed');
+    }
+
+    return { stamped, failed };
+  }
+)
+
+export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdation, releaseSeatsAndDeleteBooking , sendBookingConfirmationEmail , sendShowReminders , sendNewShowNotification, expireGroupBooking, sendWaitlistOffer, expireShowtimePoll, notifyShowtimePollClosed, expireMatchSession, expireDebateRoom, sendPriceDropAlerts, sendPostCreditsAlerts, scanFlashSeats, processCinemaPassportStamps, sendGiftCardEmail, sendGiftTicketEmail, sendDirectTicketTransferEmail, notifyResaleCompleted, notifyScreeningRequestApproved, notifyScreeningRequestRejected, scheduleLeaveNowReminder];

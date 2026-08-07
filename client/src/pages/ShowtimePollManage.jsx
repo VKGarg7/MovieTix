@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { Copy } from "lucide-react";
 import Loading from "../components/Loading";
 import BlurCircle from "../components/BlurCircle";
+import ShareLinkPanel from "../components/ShareLinkPanel";
 import { useAppContext } from "../context/useAppContext";
 import usePolling from "../hooks/usePolling";
 
@@ -31,11 +31,6 @@ const ShowtimePollManage = () => {
       if (!isCancelled()) setLoading(false);
     }
   }, POLL_INTERVAL_MS, { enabled: Boolean(user), deps: [pollId, user, axios] });
-
-  const copyLink = async () => {
-    await navigator.clipboard.writeText(shareUrl);
-    toast.success("Link copied to clipboard");
-  };
 
   const closePoll = async (winningShowId) => {
     setClosing(true);
@@ -82,19 +77,7 @@ const ShowtimePollManage = () => {
         {pollStatus.votedCount}/{pollStatus.invitedCount} voted &middot; needs {pollStatus.quorumCount} to auto-close
       </p>
 
-      <div className="w-full max-w-md bg-primary/10 border border-primary/20 rounded-lg p-4 mb-6">
-        <p className="text-sm text-gray-300 mb-2">Share this link with your friends:</p>
-        <div className="flex items-center gap-2">
-          <input
-            readOnly
-            value={shareUrl}
-            className="flex-1 bg-black/20 border border-primary/30 rounded px-3 py-2 text-xs outline-none"
-          />
-          <button onClick={copyLink} className="p-2 bg-primary rounded cursor-pointer">
-            <Copy className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+      <ShareLinkPanel shareUrl={shareUrl} />
 
       {pollStatus.status === "closed" && (
         <div className="w-full max-w-md bg-green-950/30 border border-green-500/40 rounded-lg p-4 text-sm mb-6">

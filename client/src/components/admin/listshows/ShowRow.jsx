@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDownIcon, ClockIcon, Building2Icon, MonitorPlayIcon, StarIcon,
   EyeIcon, PencilIcon, CopyIcon, BarChart3Icon, Trash2Icon, SparklesIcon,
-  ArmchairIcon, PopcornIcon, TicketPercentIcon, UsersIcon, FilmIcon,
+  ArmchairIcon, PopcornIcon, TicketPercentIcon, UsersIcon, FilmIcon, HeartHandshakeIcon,
 } from "lucide-react";
 import { dateFormat } from "../../../lib/dateFomat";
 import ShowStatusPill from "./ShowStatusPill";
@@ -64,7 +64,12 @@ const ShowRow = ({ show, i, now, currency, imageBaseUrl, selected, onToggleSelec
         </div>
 
         <div className="min-w-[170px] flex-1 max-w-[220px]">
-          <p className="text-sm font-medium truncate">{show.movie?.title}</p>
+          <p className="text-sm font-medium truncate flex items-center gap-1.5">
+            {show.movie?.title}
+            {show.isRelaxedScreening && (
+              <HeartHandshakeIcon className="w-3 h-3 text-nebula-cyan shrink-0" aria-label="Relaxed Screening" />
+            )}
+          </p>
           <div className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-0.5">
             {show.movie?.genres?.[0]?.name && <span className="truncate">{show.movie.genres[0].name}</span>}
             {show.movie?.original_language && <span className="uppercase">· {show.movie.original_language}</span>}

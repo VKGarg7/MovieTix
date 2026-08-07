@@ -5,6 +5,7 @@ import MovieCard from "../components/MovieCard";
 import FlyInCard from "../components/cinematic/FlyInCard";
 import SearchInput from "../components/SearchInput";
 import PillOptionSelector from "../components/PillOptionSelector";
+import { HeartHandshakeIcon } from "lucide-react";
 import PageHeader from "../components/cinematic/PageHeader";
 import LoadMoreButton from "../components/cinematic/LoadMoreButton";
 import { useAppContext } from "../context/useAppContext";
@@ -21,6 +22,7 @@ const Movies = () => {
   const [searchInput, setSearchInput, searchTerm] = useDebouncedSearch();
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [selectedLanguages, setSelectedLanguages] = useState([]);
+  const [relaxedOnly, setRelaxedOnly] = useState(false);
   const [tmdbResults, setTmdbResults] = useState([]);
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -82,22 +84,24 @@ const Movies = () => {
       const matchesLanguage =
         selectedLanguages.length === 0 ||
         selectedLanguages.includes(movie.original_language);
-      return matchesSearch && matchesGenre && matchesLanguage;
+      const matchesRelaxed = !relaxedOnly || movie.hasRelaxedScreening;
+      return matchesSearch && matchesGenre && matchesLanguage && matchesRelaxed;
     });
-  }, [shows, searchTerm, selectedGenres, selectedLanguages]);
+  }, [shows, searchTerm, selectedGenres, selectedLanguages, relaxedOnly]);
 
   const hasActiveFilters =
-    searchInput || selectedGenres.length > 0 || selectedLanguages.length > 0;
+    searchInput || selectedGenres.length > 0 || selectedLanguages.length > 0 || relaxedOnly;
 
   const clearFilters = () => {
     setSearchInput("");
     setSelectedGenres([]);
     setSelectedLanguages([]);
+    setRelaxedOnly(false);
   };
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [searchTerm, selectedGenres, selectedLanguages]);
+  }, [searchTerm, selectedGenres, selectedLanguages, relaxedOnly]);
 
   const visibleShows = filteredShows.slice(0, visibleCount);
   const hasMore = visibleCount < filteredShows.length;
@@ -180,6 +184,20 @@ const Movies = () => {
           />
         </div>
       )}
+
+      <div className="mt-2.5">
+        <button
+          type="button"
+          onClick={() => setRelaxedOnly((prev) => !prev)}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs border cursor-pointer transition-colors ${
+            relaxedOnly
+              ? "border-nebula-cyan/50 bg-nebula-cyan/15 text-nebula-cyan"
+              : "border-white/10 bg-white/[0.02] text-gray-400 hover:bg-white/[0.05]"
+          }`}
+        >
+          <HeartHandshakeIcon className="w-3.5 h-3.5" /> Relaxed Screenings only
+        </button>
+      </div>
 
       {hasActiveFilters && (
         <button

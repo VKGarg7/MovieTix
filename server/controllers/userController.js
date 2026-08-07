@@ -5,6 +5,7 @@ import Referral from "../models/Referral.js";
 import { clerkClient } from "@clerk/express";
 import Movie from "../models/Movie.js";
 import Follow from "../models/Follow.js";
+import CinemaPassport from "../models/CinemaPassport.js";
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
 import { parsePagination, buildPageMeta } from '../utils/pagination.js';
@@ -12,8 +13,9 @@ import { getPointsBalance, POINTS_CONFIG } from '../utils/loyaltyPoints.js';
 import { assignReferralCode } from '../utils/referrals.js';
 import { isMysteryRevealed, maskMovieForMystery } from '../utils/mysteryMovie.js';
 import { SEAT_ID_PATTERN } from '../utils/seatId.js';
+import { PASSPORT_MILESTONES } from '../utils/passportMilestones.js';
 
-const CANCELLED_STATUSES = ['cancelled', 'pending-cancellation'];
+export const CANCELLED_STATUSES = ['cancelled', 'pending-cancellation'];
 
 const categoryMatch = (category) => {
     if (category === 'Cancelled') {
@@ -305,6 +307,33 @@ export const getWrapped = asyncHandler(async (req, res) => {
         mostVisitedTheater: topTheaterEntry ? { name: topTheaterEntry.name, city: topTheaterEntry.city, visits: topTheaterEntry.count } : null,
         longestMovie,
         spendPercentile,
+    });
+});
+
+
+export const getMyPassport = asyncHandler(async (req, res) => {
+    const userId = req.auth().userId;
+
+    const passport = await CinemaPassport.findOne({ user: userId }).populate('stamps.theater');
+
+    const stamps = (passport?.stamps || [])
+        .filter(s => s.theater)
+        .map(s => ({
+            theaterId: s.theater._id,
+            name: s.theater.name,
+            city: s.theater.city,
+            firstVisitedAt: s.firstVisitedAt,
+        }))
+        .sort((a, b) => new Date(a.firstVisitedAt) - new Date(b.firstVisitedAt));
+
+    res.json({
+        success: true,
+        stamps,
+        theaterCount: stamps.length,
+        milestones: PASSPORT_MILESTONES.map(m => ({
+            ...m,
+            reached: (passport?.milestonesReached || []).includes(m.theaterCount),
+        })),
     });
 });
 

@@ -5,6 +5,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
 import { getSeatCapacityInfo } from '../utils/seatOperations.js';
 import { SCREEN_WITH_THEATER } from '../utils/theaterScope.js';
+import { findParticipantByName } from '../utils/participants.js';
 import { createGroupBookingForShow } from './groupBookingController.js';
 
 const MIN_CANDIDATES = 2;
@@ -136,7 +137,7 @@ export const voteOnShowtimePoll = asyncHandler(async (req, res) => {
     }
 
     const trimmedName = name.trim();
-    let invitee = poll.invitees.find(i => i.name.toLowerCase() === trimmedName.toLowerCase());
+    let invitee = findParticipantByName(poll.invitees, trimmedName);
     if (invitee) {
         invitee.votedFor = showId;
     } else {

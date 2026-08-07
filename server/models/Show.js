@@ -10,16 +10,20 @@ const showSchema = new mongoose.Schema(
         isCancelled: {type: Boolean, default: false},
         isMysteryMovie: {type: Boolean, default: false},
         mysteryRevealAt: {type: String, enum: ['onBooking', 'atTheater'], default: 'onBooking'},
-        // Present only for a Show born from an approved CommunityScreeningRequest
-        // (MT-804). Additive/optional by design — every existing consumer of Show
-        // (booking flow, browse filters, occupancy pulse, dashboard) has zero
-        // awareness of these fields and must keep working unmodified by omission.
+        isRelaxedScreening: {type: Boolean, default: false},
+        accommodations: {type: [String], default: []},
         communityHostId: {type: mongoose.Schema.Types.ObjectId, ref: 'CommunityHost', default: null},
         revenueSplitPercent: {type: Number, min: 0, max: 100, default: null},
+
+        isLiveEvent: {type: Boolean, default: false},
+        liveEventId: {type: mongoose.Schema.Types.ObjectId, default: null},
+        simulcastStartTime: {type: Date, default: null},
+        combinedRuntimeMinutes: {type: Number, min: 1, default: null},
     } , {minimize: false}
 )
 
 showSchema.index({ movie: 1, showDateTime: 1 });
+showSchema.index({ liveEventId: 1 }, { sparse: true });
 
 const Show = mongoose.model('Show', showSchema);
 

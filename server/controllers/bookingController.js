@@ -11,6 +11,7 @@ import { buildSeatCapacityByRow, isSeatValidForScreen } from '../utils/seatId.js
 import { buildBookingIcs } from '../utils/calendarEvent.js';
 import { buildPickupQrPng } from '../utils/qrCode.js';
 import { verifyPickupToken } from '../utils/pickupToken.js';
+import { isGoogleWalletConfigured, buildGoogleWalletSaveUrlForBooking, invalidateGoogleWalletPass } from '../utils/googleWallet.js';
 import { occupySeatsAtomic, releaseSeatsAndNotifyWaitlist } from '../utils/seatOperations.js';
 import { SCREEN_WITH_THEATER, assertScreenBelongsToTheater, resolveTheaterContext } from '../utils/theaterScope.js';
 import { loadOwnedBooking } from '../utils/bookingOwnership.js';
@@ -108,6 +109,7 @@ export const runBookingCheckout = async ({
     const computedSeatPrice = computeShowPrice(showData.showPrice, pricingRules, {
         showDateTime: showData.showDateTime,
         timezone: theaterTimezone,
+        showId,
     });
 
     const originalAmount = computedSeatPrice * selectedSeats.length;
@@ -477,10 +479,11 @@ export const getBookingCalendar = asyncHandler(async(req, res) => {
 
     const icsContent = buildBookingIcs({
         movieTitle,
-        runtimeMinutes: revealed ? movie.runtime : null,
+        runtimeMinutes: revealed ? (show.combinedRuntimeMinutes || movie.runtime) : null,
         showDateTime: show.showDateTime,
         theater: show.screen?.theater,
         bookingId: booking._id.toString(),
+        isLiveEvent: show.isLiveEvent,
     });
 
     res.set({
@@ -488,6 +491,26 @@ export const getBookingCalendar = asyncHandler(async(req, res) => {
         'Content-Disposition': `attachment; filename="${movieTitle.replace(/[^a-z0-9]/gi, '_')}.ics"`,
     });
     res.send(icsContent);
+});
+
+
+export const getBookingWalletLink = asyncHandler(async (req, res) => {
+    const { userId } = req.auth();
+    const booking = await loadOwnedBooking(req.params.bookingId, userId);
+
+    if (!booking.isPaid) {
+        throw new AppError('Only paid bookings have a wallet pass', 400, 'BOOKING_NOT_PAID');
+    }
+    if (!isGoogleWalletConfigured()) {
+        throw new AppError('Google Wallet is not configured', 503, 'WALLET_NOT_CONFIGURED');
+    }
+
+    const saveUrl = await buildGoogleWalletSaveUrlForBooking(booking);
+    if (!saveUrl) {
+        throw new AppError('Failed to generate the wallet pass, please try again', 502, 'WALLET_GENERATION_FAILED');
+    }
+
+    res.json({ success: true, saveUrl });
 });
 
 
@@ -546,6 +569,12 @@ export const cancelBooking = asyncHandler(async(req, res) => {
         }
         if (booking.giftCardAmountUsed > 0) {
             await refundGiftCardAtomic(booking.giftCardCode, booking.giftCardAmountUsed);
+        }
+
+        try {
+            await invalidateGoogleWalletPass(bookingId);
+        } catch (walletError) {
+            req.log.error({ err: walletError, bookingId }, 'Failed to invalidate Google Wallet pass (non-critical)');
         }
 
         req.log.info({ bookingId, userId }, 'Booking cancelled and refunded');
