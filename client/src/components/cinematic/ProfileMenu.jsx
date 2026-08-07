@@ -15,6 +15,7 @@ import {
   LogOutIcon,
   UserIcon,
   ChevronRightIcon,
+  ShieldIcon,
 } from "lucide-react";
 import { useAppContext } from "../../context/useAppContext";
 import UpcomingBookingCard from "./UpcomingBookingCard";
@@ -54,7 +55,10 @@ const CountUpStat = ({ label, value, i = 0, active }) => {
   );
 };
 
-const MENU_ITEMS = (nav) => [
+const MENU_ITEMS = (nav, isAdmin) => [
+  ...(isAdmin
+    ? [{ key: "admin", icon: ShieldIcon, label: "Admin Panel", action: () => nav("/admin") }]
+    : []),
   { key: "account", icon: UserIcon, label: "Account", action: () => nav("/account") },
   { key: "bookings", icon: TicketIcon, label: "Bookings", action: () => nav("/account?tab=bookings") },
   { key: "wishlist", icon: HeartIcon, label: "Wishlist", action: () => nav("/account?tab=wishlist") },
@@ -70,7 +74,7 @@ const ProfileMenu = () => {
   const { user } = useUser();
   const { signOut } = useClerk();
   const navigate = useNavigate();
-  const { axios, getToken, favoriteMovies } = useAppContext();
+  const { axios, getToken, favoriteMovies, isAdmin } = useAppContext();
 
   const [isOpen, setIsOpen] = useState(false);
   const [stage, setStage] = useState("closed");
@@ -160,7 +164,7 @@ const ProfileMenu = () => {
     await signOut();
   };
 
-  const items = MENU_ITEMS(navigate);
+  const items = MENU_ITEMS(navigate, isAdmin);
 
   return (
     <div ref={rootRef} className="relative">
@@ -256,19 +260,29 @@ const ProfileMenu = () => {
               {items.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <motion.button
-                    key={item.key}
-                    variants={{ hidden: { opacity: 0, x: 10 }, show: { opacity: 1, x: 0 } }}
-                    whileHover={{ x: 2, backgroundColor: "rgba(255,255,255,0.06)" }}
-                    onClick={() => handleMenuAction(item)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-200 hover:text-white transition-colors cursor-pointer group"
-                  >
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/5 border border-white/10 group-hover:border-white/25 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                      <Icon className="w-4 h-4" />
-                    </span>
-                    <span className="flex-1 text-left">{item.label}</span>
-                    <ChevronRightIcon className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-400 transition-colors" />
-                  </motion.button>
+                  <React.Fragment key={item.key}>
+                    <motion.button
+                      variants={{ hidden: { opacity: 0, x: 10 }, show: { opacity: 1, x: 0 } }}
+                      whileHover={{ x: 2, backgroundColor: "rgba(255,255,255,0.06)" }}
+                      onClick={() => handleMenuAction(item)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors cursor-pointer group ${
+                        item.key === "admin" ? "text-nebula-violet hover:text-nebula-violet" : "text-gray-200 hover:text-white"
+                      }`}
+                    >
+                      <span
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${
+                          item.key === "admin"
+                            ? "bg-nebula-violet/10 border-nebula-violet/25 group-hover:bg-nebula-violet/20"
+                            : "bg-white/5 border-white/10 group-hover:border-white/25 group-hover:bg-primary/10 group-hover:text-primary"
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </span>
+                      <span className="flex-1 text-left">{item.label}</span>
+                      <ChevronRightIcon className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-400 transition-colors" />
+                    </motion.button>
+                    {item.key === "admin" && <div className="my-1.5 h-px bg-white/8" />}
+                  </React.Fragment>
                 );
               })}
 

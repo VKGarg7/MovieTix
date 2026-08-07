@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HeartIcon } from "lucide-react";
 import FlyInCard from "../components/cinematic/FlyInCard";
@@ -9,11 +9,29 @@ import FavouriteCollections from "../components/favourite/FavouriteCollections";
 import BecauseYouLoved from "../components/favourite/BecauseYouLoved";
 import FavouriteFilters from "../components/favourite/FavouriteFilters";
 import FavouriteCard from "../components/favourite/FavouriteCard";
+import Loading from "../components/Loading";
 import { useAppContext } from "../context/useAppContext";
 import useDebouncedSearch from "../hooks/useDebouncedSearch";
 
 const Favourite = () => {
-  const { favoriteMovies } = useAppContext();
+  const { user, favoriteMovies, fetchFavoriteMovies } = useAppContext();
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      await fetchFavoriteMovies();
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const [searchInput, setSearchInput, searchTerm] = useDebouncedSearch();
   const [selectedGenres, setSelectedGenres] = useState([]);
@@ -46,8 +64,6 @@ const Favourite = () => {
       return matchesSearch && matchesGenre && matchesLanguage && matchesRating;
     });
 
-    // favoriteMovies arrives oldest-first (see getFavorites backend fix), so
-    // reversing gives genuinely-most-recently-added-first for that sort mode.
     if (sort === "Recently Added") list = [...list].reverse();
     else if (sort === "Highest Rated") list = [...list].sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
     else if (sort === "Shortest Runtime") list = [...list].sort((a, b) => (a.runtime || 0) - (b.runtime || 0));
@@ -64,6 +80,8 @@ const Favourite = () => {
     setSelectedLanguages([]);
     setMinRating(0);
   };
+
+  if (loading) return <Loading />;
 
   if (favoriteMovies.length === 0) {
     return (
